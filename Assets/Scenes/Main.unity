@@ -1337,7 +1337,7 @@ MonoBehaviour:
   zoomInButton: {fileID: 0}
   zoomOutButton: {fileID: 0}
   tileSourceDropdown: {fileID: 845498955}
-  tileSourcesAsset: {fileID: 0}
+  tileSourcesAsset: {fileID: 11400000, guid: ce857d902fa324861b46a4a988c05136, type: 2}
   applyMaterialButton: {fileID: 1945077102}
   availableMaterials: []
   materialDropdown: {fileID: 1791211368}
@@ -3315,6 +3315,7 @@ GameObject:
   - component: {fileID: 1274927361}
   - component: {fileID: 1274927363}
   - component: {fileID: 1274927362}
+  - component: {fileID: 1274927364}
   m_Layer: 0
   m_Name: MapController
   m_TagString: Untagged
@@ -3378,6 +3379,34 @@ MonoBehaviour:
   inertiaDamping: 0.85
   scrollZoomSensitivity: 1
   zoomReloadDelay: 0.5
+--- !u!114 &1274927364
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1274927360}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d6fdd7e7de3d448249f9f3441f9b251e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  handDrawnShader: {fileID: 4800000, guid: a12f70c7835c24bd9b8952a4e4d9e6e8, type: 3}
+  paperColor: {r: 0.96, g: 0.93, b: 0.85, a: 1}
+  inkColor: {r: 0.12, g: 0.08, b: 0.04, a: 1}
+  edgeStrength: 1.8
+  edgeThreshold: 0.15
+  saturation: 0.45
+  brightness: 1.05
+  warmTint: 0.18
+  paperBlend: 0.12
+  pencilScale: 180
+  pencilStrength: 0.28
+  hatchStrength: 0.12
+  hatchScale: 60
+  wobbleStrength: 0.004
+  wobbleScale: 12
+  activePreset: 0
 --- !u!1 &1353589143
 GameObject:
   m_ObjectHideFlags: 0

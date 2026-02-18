@@ -269,6 +269,16 @@ public class OSMMapManager : MonoBehaviour
         return mat;
     }
 
+    /// <summary>Returns the material instance of every currently active tile.</summary>
+    public IEnumerable<Material> GetActiveTileMaterials()
+    {
+        foreach (var tile in _activeTiles.Values)
+        {
+            var r = tile.GetComponent<Renderer>();
+            if (r != null) yield return r.material;
+        }
+    }
+
     private void OnDestroy()
     {
         // Clean up cached textures from memory
