@@ -3349,8 +3349,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9c8ae75e723df4e5c915a785056f8bf1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  latitude: 48.85660171508789
-  longitude: 2.3522000312805176
+  latitude: 51.09510933242771
+  longitude: 4.349887543038407
   zoomLevel: 14
   tileRadius: 2
   tileUrlTemplate: https://tile.openstreetmap.org/{z}/{x}/{y}.png
