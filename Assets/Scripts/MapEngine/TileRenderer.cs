@@ -183,18 +183,20 @@ public class TileRenderer : MonoBehaviour
         if (labelFont == null) return;
         if (feature.Geometry.Count == 0 || feature.Geometry[0].Count == 0) return;
 
-        var pt = feature.Geometry[0][0];
+        // For lines, use midpoint of geometry instead of first point
+        var ring = feature.Geometry[0];
+        var pt = ring[ring.Count / 2];
         Vector3 pos = TileCoordToLocal(pt.x, pt.y, layer.Extent);
 
         var go = new GameObject("label:" + text);
         go.transform.parent = transform;
-        go.transform.localPosition = pos + Vector3.up * 0.05f;
+        go.transform.localPosition = pos + Vector3.up * (tileWorldSize * 0.0001f);
         go.transform.localRotation = Quaternion.Euler(90, 0, 0);
 
         var tmp = go.AddComponent<TextMeshPro>();
         tmp.font = labelFont;
         tmp.text = text;
-        tmp.fontSize = 1.5f;
+        tmp.fontSize = tileWorldSize * 0.02f; // scale with world size
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.black;
     }
