@@ -296,4 +296,24 @@ public class PMTilesReader
                 Debug.Log($"  Nearby entry: TileId={e.TileId} Offset={e.Offset} Length={e.Length}");
         }
     }
+
+    public List<(int x, int y)> GetAllTilesAtZoom(int zoom)
+    {
+        var result = new List<(int x, int y)>();
+        foreach (var entry in rootEntries)
+        {
+            if (entry.RunLength == 0) continue;
+            var (z, x, y) = IdToZxy(entry.TileId);
+            if (z == zoom)
+                result.Add((x, y));
+            // Handle run-length: consecutive tiles
+            for (uint r = 1; r < entry.RunLength; r++)
+            {
+                var (rz, rx, ry) = IdToZxy(entry.TileId + r);
+                if (rz == zoom)
+                    result.Add((rx, ry));
+            }
+        }
+        return result;
+    }
 }

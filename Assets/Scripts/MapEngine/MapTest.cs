@@ -2,33 +2,53 @@ using UnityEngine;
 
 public class MapTest : MonoBehaviour
 {
+    public TileRenderer tilePrefab;
+    public float tileWorldSize = 10f;
+
+    private GameObject mapRoot;
+
     async void Start()
     {
+        if (mapRoot != null)
+            Destroy(mapRoot);
+
+        mapRoot = new GameObject("MapRoot");
+
         var reader = new PMTilesReader();
         await reader.Initialize();
 
-        byte[] tileData = await reader.GetTile(14, 8388, 5480);
+        if (mapRoot == null) return;
 
-        if (tileData == null)
+        var tiles = reader.GetAllTilesAtZoom(14);
+        Debug.Log($"Loading {tiles.Count} tiles...");
+
+        int minX = 8384, minY = 5471, zoom = 14;
+
+        foreach (var (x, y) in tiles)
         {
-            Debug.LogError("Tile still null.");
-            return;
+            if (mapRoot == null) return;
+
+            byte[] tileData = await reader.GetTile(zoom, x, y);
+
+            if (mapRoot == null) return;
+            if (tileData == null) continue;
+
+            var layers = MVTParser.Parse(tileData);
+
+            var tileGO = Instantiate(tilePrefab.gameObject);
+            tileGO.name = $"Tile_{x}_{y}";
+            tileGO.transform.parent = mapRoot.transform;
+            tileGO.transform.localPosition = new Vector3(
+                (x - minX) * tileWorldSize,
+                0,
+                (y - minY) * tileWorldSize
+            );
+            tileGO.SetActive(true);
+
+            var tr = tileGO.GetComponent<TileRenderer>();
+            tr.Render(layers, zoom, x, y, tileWorldSize);
         }
 
-        Debug.Log($"Got tile, size: {tileData.Length} bytes");
-
-        var layers = MVTParser.Parse(tileData);
-        Debug.Log($"Parsed {layers.Count} layers:");
-        foreach (var layer in layers)
-        {
-            Debug.Log($"  Layer '{layer.Name}': {layer.Features.Count} features");
-            if (layer.Features.Count > 0)
-            {
-                string propStr = "";
-                foreach (var kv in layer.Features[0].Properties)
-                    propStr += $"{kv.Key}={kv.Value} ";
-                Debug.Log($"    First feature props: {propStr}");
-            }
-        }
+        Debug.Log($"All tiles loaded. tileWorldSize={tileWorldSize}");
     }
 }

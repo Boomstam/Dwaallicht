@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a8d7c69399f847d19e1b72baf7c9d21, type: 3}
+  m_Name: MapMaterials
+  m_EditorClassIdentifier: 
+  motorway: {fileID: 0}
+  trunk: {fileID: 0}
+  primary: {fileID: 0}
+  secondary: {fileID: 0}
+  tertiary: {fileID: 0}
+  minor: {fileID: 0}
+  service: {fileID: 0}
+  path: {fileID: 0}
+  track: {fileID: 0}
+  cycleway: {fileID: 0}
+  rail: {fileID: 0}
+  ferry: {fileID: 0}
+  river: {fileID: 0}
+  canal: {fileID: 0}
+  stream: {fileID: 0}
+  ditch: {fileID: 0}
+  water: {fileID: 0}
+  grass: {fileID: 0}
+  forest: {fileID: 0}
+  sand: {fileID: 0}
+  wetland: {fileID: 0}
+  farmland: {fileID: 0}
+  rock: {fileID: 0}
+  residential: {fileID: 0}
+  industrial: {fileID: 0}
+  commercial: {fileID: 0}
+  retail: {fileID: 0}
+  park: {fileID: 0}
+  cemetery: {fileID: 0}
+  military: {fileID: 0}
+  building: {fileID: 0}
+  boundary: {fileID: 0}
