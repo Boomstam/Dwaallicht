@@ -50,6 +50,7 @@
   <ItemGroup>
     <Compile Include="Assets/Scripts/MapEngine/TileRenderer.cs" />
     <Compile Include="Assets/Scripts/MapEngine/MVTParser.cs" />
+    <Compile Include="Assets/Scripts/MapEngine/MapCameraController.cs" />
     <Compile Include="Assets/Scripts/MapEngine/PMTilesReader.cs" />
     <Compile Include="Assets/Scripts/MapEngine/MapTest.cs" />
     <Compile Include="Assets/TutorialInfo/Scripts/Readme.cs" />
