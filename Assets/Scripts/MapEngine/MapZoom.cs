@@ -24,7 +24,6 @@ public class MapZoom : MonoBehaviour
     // Meters per world unit (derived from tileWorldSize and real tile width)
     private float _metersPerUnit;
 
-    // Screen width in meters at current camera height
     // Standard OSM: 1 screen pixel = X meters at zoom Z
     // At zoom 0: 156543m/px, each zoom doubles resolution
     private const float MetersPerPixelAtZoom0 = 156543f;
@@ -32,29 +31,29 @@ public class MapZoom : MonoBehaviour
     void Start()
     {
         _metersPerUnit = RealWorldTileWidthMeters / mapTest.tileWorldSize;
+        Debug.Log($"[MapZoom] metersPerUnit={_metersPerUnit:F3}");
     }
 
     void Update()
     {
         if (mapTest == null || !mapTest.isLoaded) return;
 
-        float cameraHeight = transform.position.y;
+        float heightMeters   = transform.position.y * _metersPerUnit;
+        float metersPerPixel = (heightMeters * 2f) / Screen.width;
+        float rawZoom        = Mathf.Log(MetersPerPixelAtZoom0 / metersPerPixel, 2f);
 
-        // Camera height in world units → height in meters
-        float heightMeters = cameraHeight * _metersPerUnit;
+        // Snap to 2 decimal places.
+        // This kills floating-point noise from Mathf.Log that would otherwise
+        // produce a continuously drifting value, causing TileRenderer to
+        // trigger ribbon rebuilds on every frame even at rest.
+        float snapped = Mathf.Round(Mathf.Clamp(rawZoom, minVisualZoom, maxVisualZoom) * 100f) / 100f;
 
-        // Derive meters per pixel (assuming screen width ~1000px for simplicity,
-        // use actual screen width for accuracy)
-        float screenWidthPx = Screen.width;
-        float metersPerPixel = (heightMeters * 2f) / screenWidthPx;
-
-        // OSM zoom formula: zoom = log2(MetersPerPixelAtZoom0 / metersPerPixel)
-        float zoom = Mathf.Log(MetersPerPixelAtZoom0 / metersPerPixel, 2f);
-        VisualZoom = Mathf.Clamp(zoom, minVisualZoom, maxVisualZoom);
+        // Only write when actually changed — downstream comparisons stay stable.
+        if (snapped != VisualZoom)
+            VisualZoom = snapped;
     }
 
     // Utility: get a value interpolated between two zoom levels
-    // e.g. GetZoomValue(14, 1f, 18, 8f) returns line width scaled between zoom 14 and 18
     public float GetZoomValue(float zoomA, float valueA, float zoomB, float valueB)
     {
         float t = Mathf.InverseLerp(zoomA, zoomB, VisualZoom);
