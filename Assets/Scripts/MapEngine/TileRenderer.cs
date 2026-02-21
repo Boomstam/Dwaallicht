@@ -10,17 +10,91 @@ public class TileRenderer : MonoBehaviour
     private float tileWorldSize;
     private int tileX, tileY, tileZoom;
     private Dictionary<string, Material> _defaultMaterials = new();
+    private float _highestPolygonY = 0f;
+
+    // Explicit render order: bottom to top
+    private static readonly string[] LayerOrder = new[]
+    {
+        "landcover",
+        "landuse",
+        "water",
+        "park",
+        "waterway",
+        "boundary",
+        "building",
+        "transportation",
+        "transportation_name",
+        "water_name",
+        "place",
+        "poi",
+        "housenumber",
+    };
+
+    // Within landcover, render in this class order: bottom to top
+    private static readonly string[] LandcoverOrder = new[]
+    {
+        "grass", "farmland", "wetland", "sand", "wood", "forest"
+    };
 
     public void Render(List<MVTLayer> layers, int z, int x, int y, float worldSize)
     {
         tileZoom = z; tileX = x; tileY = y;
         tileWorldSize = worldSize;
+        _highestPolygonY = 0f;
 
+        var layerMap = new Dictionary<string, MVTLayer>();
         foreach (var layer in layers)
-            RenderLayer(layer);
+            layerMap[layer.Name] = layer;
+
+        int polygonIndex = 0;
+
+        foreach (var layerName in LayerOrder)
+        {
+            if (!layerMap.TryGetValue(layerName, out var layer)) continue;
+
+            if (layerName == "landcover")
+                RenderLandcoverOrdered(layer, ref polygonIndex);
+            else
+                RenderLayer(layer, ref polygonIndex);
+        }
     }
 
-    void RenderLayer(MVTLayer layer)
+    void RenderLandcoverOrdered(MVTLayer layer, ref int polygonIndex)
+    {
+        var byClass = new Dictionary<string, List<MVTFeature>>();
+        foreach (var feature in layer.Features)
+        {
+            string fc = GetProp(feature, "class");
+            if (!byClass.ContainsKey(fc)) byClass[fc] = new List<MVTFeature>();
+            byClass[fc].Add(feature);
+        }
+
+        foreach (var fc in LandcoverOrder)
+        {
+            if (!byClass.TryGetValue(fc, out var features)) continue;
+            foreach (var feature in features)
+            {
+                Material mat = materials != null
+                    ? materials.Resolve("landcover", fc, "") ?? GetDefaultMaterial("landcover", fc)
+                    : GetDefaultMaterial("landcover", fc);
+                RenderPolygon(feature, layer, mat, "landcover/" + fc, fc, polygonIndex++);
+            }
+        }
+
+        foreach (var kv in byClass)
+        {
+            if (System.Array.IndexOf(LandcoverOrder, kv.Key) >= 0) continue;
+            foreach (var feature in kv.Value)
+            {
+                Material mat = materials != null
+                    ? materials.Resolve("landcover", kv.Key, "") ?? GetDefaultMaterial("landcover", kv.Key)
+                    : GetDefaultMaterial("landcover", kv.Key);
+                RenderPolygon(feature, layer, mat, "landcover/" + kv.Key, kv.Key, polygonIndex++);
+            }
+        }
+    }
+
+    void RenderLayer(MVTLayer layer, ref int polygonIndex)
     {
         foreach (var feature in layer.Features)
         {
@@ -41,13 +115,12 @@ public class TileRenderer : MonoBehaviour
                     RenderLine(feature, layer, mat, layer.Name + "/" + featureClass);
                     break;
                 case "building":
-                    RenderPolygon(feature, layer, mat, "building");
+                    RenderPolygon(feature, layer, mat, "building", featureClass, polygonIndex++);
                     break;
                 case "water":
-                case "landcover":
                 case "landuse":
                 case "park":
-                    RenderPolygon(feature, layer, mat, layer.Name + "/" + featureClass);
+                    RenderPolygon(feature, layer, mat, layer.Name + "/" + featureClass, featureClass, polygonIndex++);
                     break;
                 case "boundary":
                     RenderLine(feature, layer, mat, "boundary");
@@ -120,6 +193,28 @@ public class TileRenderer : MonoBehaviour
         return mat;
     }
 
+    float GetLayerYOffset(string layerName, string featureClass = "")
+    {
+        return layerName switch
+        {
+            "landcover" => featureClass switch
+            {
+                "grass"    => 0f,
+                "farmland" => 0.001f,
+                "wetland"  => 0.002f,
+                "sand"     => 0.003f,
+                "wood"     => 0.004f,
+                "forest"   => 0.004f,
+                _          => 0f,
+            },
+            "landuse"   => 0.01f,
+            "water"     => 0.02f,
+            "park"      => 0.03f,
+            "building"  => 0.04f,
+            _           => 0f,
+        };
+    }
+
     void RenderLine(MVTFeature feature, MVTLayer layer, Material mat, string label)
     {
         if (mat == null) return;
@@ -145,7 +240,7 @@ public class TileRenderer : MonoBehaviour
         }
     }
 
-    void RenderPolygon(MVTFeature feature, MVTLayer layer, Material mat, string label)
+    void RenderPolygon(MVTFeature feature, MVTLayer layer, Material mat, string label, string featureClass, int index)
     {
         if (mat == null) return;
         if (feature.Geometry.Count == 0) return;
@@ -160,8 +255,11 @@ public class TileRenderer : MonoBehaviour
         var verts = new List<Vector3>();
         var tris = new List<int>();
 
+        float yOffset = GetLayerYOffset(layer.Name, featureClass) + index * (tileWorldSize * 0.000001f);
+        if (yOffset > _highestPolygonY) _highestPolygonY = yOffset;
+
         foreach (var pt in outerRing)
-            verts.Add(TileCoordToLocal(pt.x, pt.y, layer.Extent));
+            verts.Add(TileCoordToLocal(pt.x, pt.y, layer.Extent, yOffset));
 
         if (verts.Count > 1 && verts[0] == verts[verts.Count - 1])
             verts.RemoveAt(verts.Count - 1);
@@ -183,29 +281,28 @@ public class TileRenderer : MonoBehaviour
         if (labelFont == null) return;
         if (feature.Geometry.Count == 0 || feature.Geometry[0].Count == 0) return;
 
-        // For lines, use midpoint of geometry instead of first point
         var ring = feature.Geometry[0];
         var pt = ring[ring.Count / 2];
         Vector3 pos = TileCoordToLocal(pt.x, pt.y, layer.Extent);
 
         var go = new GameObject("label:" + text);
         go.transform.parent = transform;
-        go.transform.localPosition = pos + Vector3.up * (tileWorldSize * 0.0001f);
+        go.transform.localPosition = new Vector3(pos.x, _highestPolygonY + tileWorldSize * 0.000001f, pos.z);
         go.transform.localRotation = Quaternion.Euler(90, 0, 0);
 
         var tmp = go.AddComponent<TextMeshPro>();
         tmp.font = labelFont;
         tmp.text = text;
-        tmp.fontSize = tileWorldSize * 0.02f; // scale with world size
+        tmp.fontSize = tileWorldSize * 0.02f;
         tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = Color.black;
+        tmp.color = Color.white;
     }
 
-    Vector3 TileCoordToLocal(int tx, int ty, int extent)
+    Vector3 TileCoordToLocal(int tx, int ty, int extent, float yOffset = 0f)
     {
         float x = ((float)tx / extent) * tileWorldSize;
         float z = ((float)ty / extent) * tileWorldSize;
-        return new Vector3(x, 0, z);
+        return new Vector3(x, yOffset, z);
     }
 
     float GetLineWidth(string label)
