@@ -348,13 +348,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 886c0cd2892e3417e821e38dbb3f7c47, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  startX: 6000
-  startZ: 6000
-  startHeight: 2000
+  mapTest: {fileID: 1413625303}
   dragSpeed: 1
   zoomSpeed: 100
-  minHeight: 100
-  maxHeight: 5000
+  minHeight: 1
+  maxHeight: 10000
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -617,6 +615,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   tilePrefab: {fileID: 1083821392}
   tileWorldSize: 10
+  mapCenter: {x: 0, y: 0, z: 0}
+  mapWidth: 0
+  mapHeight: 0
+  isLoaded: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
