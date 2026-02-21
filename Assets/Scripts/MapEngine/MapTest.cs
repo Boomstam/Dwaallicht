@@ -5,9 +5,9 @@ public class MapTest : MonoBehaviour
     public TileRenderer tilePrefab;
     public float tileWorldSize = 1000f;
 
-    private const int DEBUG_ZOOM = 14;
-    private const int DEBUG_X = 8389;
-    private const int DEBUG_Y = 5479;
+    private const int ZOOM = 14;
+    private const int MIN_X = 8384;
+    private const int MIN_Y = 5471;
 
     private GameObject mapRoot;
 
@@ -23,26 +23,33 @@ public class MapTest : MonoBehaviour
 
         if (mapRoot == null) return;
 
-        byte[] tileData = await reader.GetTile(DEBUG_ZOOM, DEBUG_X, DEBUG_Y);
+        var tiles = reader.GetAllTilesAtZoom(ZOOM);
 
-        if (mapRoot == null) return;
-        if (tileData == null) { Debug.LogError("Tile is null."); return; }
+        foreach (var (x, y) in tiles)
+        {
+            if (mapRoot == null) return;
 
-        var layers = MVTParser.Parse(tileData);
+            byte[] tileData = await reader.GetTile(ZOOM, x, y);
 
-        var tileGO = Instantiate(tilePrefab.gameObject);
-        tileGO.name = $"Tile_{DEBUG_X}_{DEBUG_Y}";
-        tileGO.transform.parent = mapRoot.transform;
-        tileGO.transform.localPosition = Vector3.zero;
-        tileGO.SetActive(true);
+            if (mapRoot == null) return;
+            if (tileData == null) continue;
 
-        var tr = tileGO.GetComponent<TileRenderer>();
-        tr.Render(layers, DEBUG_ZOOM, DEBUG_X, DEBUG_Y, tileWorldSize);
+            var layers = MVTParser.Parse(tileData);
 
-        // Log all labels and their positions
-        Debug.Log("=== LABELS ===");
-        foreach (Transform child in tileGO.transform)
-            if (child.name.StartsWith("label:"))
-                Debug.Log($"LABEL '{child.name}' localPos={child.localPosition}");
+            var tileGO = Instantiate(tilePrefab.gameObject);
+            tileGO.name = $"Tile_{x}_{y}";
+            tileGO.transform.parent = mapRoot.transform;
+            tileGO.transform.localPosition = Vector3.zero;
+            tileGO.SetActive(true);
+
+            // Pass world offset directly into Render — geometry is baked in world space
+            float offsetX = (x - MIN_X) * tileWorldSize;
+            float offsetZ = (y - MIN_Y) * tileWorldSize;
+
+            var tr = tileGO.GetComponent<TileRenderer>();
+            tr.Render(layers, ZOOM, x, y, tileWorldSize, offsetX, offsetZ);
+        }
+
+        Debug.Log("All tiles loaded.");
     }
 }

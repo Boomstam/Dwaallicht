@@ -8,11 +8,11 @@ public class TileRenderer : MonoBehaviour
     public TMP_FontAsset labelFont;
 
     private float tileWorldSize;
-    private int tileX, tileY, tileZoom;
+    private float tileOffsetX;
+    private float tileOffsetZ;
     private Dictionary<string, Material> _defaultMaterials = new();
     private float _highestPolygonY = 0f;
 
-    // Explicit render order: bottom to top
     private static readonly string[] LayerOrder = new[]
     {
         "landcover",
@@ -30,17 +30,20 @@ public class TileRenderer : MonoBehaviour
         "housenumber",
     };
 
-    // Within landcover, render in this class order: bottom to top
     private static readonly string[] LandcoverOrder = new[]
     {
         "grass", "farmland", "wetland", "sand", "wood", "forest"
     };
 
-    public void Render(List<MVTLayer> layers, int z, int x, int y, float worldSize)
+    public void Render(List<MVTLayer> layers, int z, int x, int y, float worldSize, float offsetX, float offsetZ)
     {
-        tileZoom = z; tileX = x; tileY = y;
         tileWorldSize = worldSize;
+        tileOffsetX = offsetX;
+        tileOffsetZ = offsetZ;
         _highestPolygonY = 0f;
+
+        // Always keep the tile GO at origin - world offset is baked into geometry
+        transform.localPosition = Vector3.zero;
 
         var layerMap = new Dictionary<string, MVTLayer>();
         foreach (var layer in layers)
@@ -140,6 +143,97 @@ public class TileRenderer : MonoBehaviour
         }
     }
 
+    // Convert tile coordinate to world position with baked offset
+    Vector3 ToWorld(int tx, int ty, int extent, float yOffset = 0f)
+    {
+        float x = tileOffsetX + ((float)tx / extent) * tileWorldSize;
+        float z = tileOffsetZ + ((float)ty / extent) * tileWorldSize;
+        return new Vector3(x, yOffset, z);
+    }
+
+    void RenderLine(MVTFeature feature, MVTLayer layer, Material mat, string label)
+    {
+        if (mat == null) return;
+
+        foreach (var ring in feature.Geometry)
+        {
+            if (ring.Count < 2) continue;
+
+            var go = new GameObject(label);
+            go.transform.parent = transform;
+            go.transform.localPosition = Vector3.zero;
+
+            var lr = go.AddComponent<LineRenderer>();
+            lr.material = mat;
+            lr.positionCount = ring.Count;
+            lr.useWorldSpace = true;
+
+            float width = GetLineWidth(label);
+            lr.startWidth = lr.endWidth = width;
+            lr.numCapVertices = 4;
+
+            for (int i = 0; i < ring.Count; i++)
+                lr.SetPosition(i, ToWorld(ring[i].x, ring[i].y, layer.Extent));
+        }
+    }
+
+    void RenderPolygon(MVTFeature feature, MVTLayer layer, Material mat, string label, string featureClass, int index)
+    {
+        if (mat == null) return;
+        if (feature.Geometry.Count == 0) return;
+
+        var outerRing = feature.Geometry[0];
+        if (outerRing.Count < 3) return;
+
+        var go = new GameObject(label);
+        go.transform.parent = transform;
+        go.transform.localPosition = Vector3.zero;
+
+        float yOffset = GetLayerYOffset(layer.Name, featureClass) + index * (tileWorldSize * 0.000001f);
+        if (yOffset > _highestPolygonY) _highestPolygonY = yOffset;
+
+        var verts = new List<Vector3>();
+        foreach (var pt in outerRing)
+            verts.Add(ToWorld(pt.x, pt.y, layer.Extent, yOffset));
+
+        if (verts.Count > 1 && verts[0] == verts[verts.Count - 1])
+            verts.RemoveAt(verts.Count - 1);
+
+        var tris = Triangulate(verts);
+
+        var mesh = new Mesh();
+        mesh.vertices = verts.ToArray();
+        mesh.triangles = tris.ToArray();
+        mesh.RecalculateNormals();
+
+        var mf = go.AddComponent<MeshFilter>();
+        var mr = go.AddComponent<MeshRenderer>();
+        mf.mesh = mesh;
+        mr.material = mat;
+    }
+
+    void RenderLabel(MVTFeature feature, MVTLayer layer, string text)
+    {
+        if (labelFont == null) return;
+        if (feature.Geometry.Count == 0 || feature.Geometry[0].Count == 0) return;
+
+        var ring = feature.Geometry[0];
+        var pt = ring[ring.Count / 2];
+        Vector3 worldPos = ToWorld(pt.x, pt.y, layer.Extent, _highestPolygonY + tileWorldSize * 0.000001f);
+
+        var go = new GameObject("label:" + text);
+        go.transform.parent = transform;
+        go.transform.position = worldPos;
+        go.transform.rotation = Quaternion.Euler(90, 0, 0);
+
+        var tmp = go.AddComponent<TextMeshPro>();
+        tmp.font = labelFont;
+        tmp.text = text;
+        tmp.fontSize = tileWorldSize * 0.02f;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+    }
+
     Material GetDefaultMaterial(string layer = "", string featureClass = "")
     {
         string key = layer + "/" + featureClass;
@@ -213,96 +307,6 @@ public class TileRenderer : MonoBehaviour
             "building"  => 0.04f,
             _           => 0f,
         };
-    }
-
-    void RenderLine(MVTFeature feature, MVTLayer layer, Material mat, string label)
-    {
-        if (mat == null) return;
-
-        foreach (var ring in feature.Geometry)
-        {
-            if (ring.Count < 2) continue;
-
-            var go = new GameObject(label);
-            go.transform.parent = transform;
-
-            var lr = go.AddComponent<LineRenderer>();
-            lr.material = mat;
-            lr.positionCount = ring.Count;
-            lr.useWorldSpace = false;
-
-            float width = GetLineWidth(label);
-            lr.startWidth = lr.endWidth = width;
-            lr.numCapVertices = 4;
-
-            for (int i = 0; i < ring.Count; i++)
-                lr.SetPosition(i, TileCoordToLocal(ring[i].x, ring[i].y, layer.Extent));
-        }
-    }
-
-    void RenderPolygon(MVTFeature feature, MVTLayer layer, Material mat, string label, string featureClass, int index)
-    {
-        if (mat == null) return;
-        if (feature.Geometry.Count == 0) return;
-
-        var outerRing = feature.Geometry[0];
-        if (outerRing.Count < 3) return;
-
-        var go = new GameObject(label);
-        go.transform.parent = transform;
-
-        var mesh = new Mesh();
-        var verts = new List<Vector3>();
-        var tris = new List<int>();
-
-        float yOffset = GetLayerYOffset(layer.Name, featureClass) + index * (tileWorldSize * 0.000001f);
-        if (yOffset > _highestPolygonY) _highestPolygonY = yOffset;
-
-        foreach (var pt in outerRing)
-            verts.Add(TileCoordToLocal(pt.x, pt.y, layer.Extent, yOffset));
-
-        if (verts.Count > 1 && verts[0] == verts[verts.Count - 1])
-            verts.RemoveAt(verts.Count - 1);
-
-        tris.AddRange(Triangulate(verts));
-
-        mesh.vertices = verts.ToArray();
-        mesh.triangles = tris.ToArray();
-        mesh.RecalculateNormals();
-
-        var mf = go.AddComponent<MeshFilter>();
-        var mr = go.AddComponent<MeshRenderer>();
-        mf.mesh = mesh;
-        mr.material = mat;
-    }
-
-    void RenderLabel(MVTFeature feature, MVTLayer layer, string text)
-    {
-        if (labelFont == null) return;
-        if (feature.Geometry.Count == 0 || feature.Geometry[0].Count == 0) return;
-
-        var ring = feature.Geometry[0];
-        var pt = ring[ring.Count / 2];
-        Vector3 pos = TileCoordToLocal(pt.x, pt.y, layer.Extent);
-
-        var go = new GameObject("label:" + text);
-        go.transform.parent = transform;
-        go.transform.localPosition = new Vector3(pos.x, _highestPolygonY + tileWorldSize * 0.000001f, pos.z);
-        go.transform.localRotation = Quaternion.Euler(90, 0, 0);
-
-        var tmp = go.AddComponent<TextMeshPro>();
-        tmp.font = labelFont;
-        tmp.text = text;
-        tmp.fontSize = tileWorldSize * 0.02f;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = Color.white;
-    }
-
-    Vector3 TileCoordToLocal(int tx, int ty, int extent, float yOffset = 0f)
-    {
-        float x = ((float)tx / extent) * tileWorldSize;
-        float z = ((float)ty / extent) * tileWorldSize;
-        return new Vector3(x, yOffset, z);
     }
 
     float GetLineWidth(string label)
