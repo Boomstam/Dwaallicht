@@ -114,13 +114,6 @@ public class PMTilesReader
         ulong tileId = ZxyToId(z, x, y);
         var entry = FindEntry(rootEntries, tileId);
 
-        if (entry == null)
-        {
-            // Try leaf directory
-            // (for large tilesets; may not be needed for small regional files)
-            return null;
-        }
-
         if (entry.Value.RunLength == 0)
         {
             // This is a leaf directory pointer
@@ -128,7 +121,7 @@ public class PMTilesReader
             byte[] leafBytes = Decompress(leafRaw, header.InternalCompression);
             var leafEntries = ParseDirectory(leafBytes);
             var leafEntry = FindEntry(leafEntries, tileId);
-            if (leafEntry == null) return null;
+
             entry = leafEntry;
         }
 

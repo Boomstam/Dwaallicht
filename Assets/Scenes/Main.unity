@@ -208,6 +208,7 @@ GameObject:
   m_Component:
   - component: {fileID: 330585546}
   - component: {fileID: 330585548}
+  - component: {fileID: 330585549}
   - component: {fileID: 330585545}
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
@@ -349,10 +350,26 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mapTest: {fileID: 1413625303}
+  mapZoom: {fileID: 330585549}
   dragSpeed: 1
-  zoomSpeed: 100
+  zoomSpeed: 1
   minHeight: 1
   maxHeight: 10000
+--- !u!114 &330585549
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 241b8f90220b042b28f78f228d97fb84, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mapTest: {fileID: 1413625303}
+  minVisualZoom: 10
+  maxVisualZoom: 18
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -569,6 +586,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   materials: {fileID: 0}
   labelFont: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  mapZoom: {fileID: 330585549}
 --- !u!1 &1413625301
 GameObject:
   m_ObjectHideFlags: 0
@@ -614,7 +632,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   tilePrefab: {fileID: 1083821392}
-  tileWorldSize: 10
+  mapZoom: {fileID: 330585549}
+  tileWorldSize: 1000
   mapCenter: {x: 0, y: 0, z: 0}
   mapWidth: 0
   mapHeight: 0

@@ -4,6 +4,7 @@ public class MapCameraController : MonoBehaviour
 {
     [Header("Map Reference")]
     public MapTest mapTest;
+    public MapZoom mapZoom;
 
     [Header("Drag")]
     public float dragSpeed = 1f;
@@ -16,6 +17,10 @@ public class MapCameraController : MonoBehaviour
     private Vector3 _dragOrigin;
     private bool _isDragging;
     private bool _positioned = false;
+
+    // Throttle logging to avoid spam
+    private float _logTimer = 0f;
+    private const float LogInterval = 1f;
 
     void Awake()
     {
@@ -32,6 +37,15 @@ public class MapCameraController : MonoBehaviour
 
         HandleDrag();
         HandleZoom();
+
+        // Log zoom level once per second while moving
+        _logTimer -= Time.deltaTime;
+        if (_logTimer <= 0f)
+        {
+            Debug.Log($"[Camera] height={transform.position.y:F0} visualZoom={mapZoom.VisualZoom:F2}");
+            
+            _logTimer = LogInterval;
+        }
     }
 
     void PositionOnMap()
@@ -42,7 +56,6 @@ public class MapCameraController : MonoBehaviour
         float largerDimension = Mathf.Max(mapTest.mapWidth, mapTest.mapHeight);
         float height = largerDimension * 0.7f;
 
-        // Scale min/max height to tileWorldSize
         minHeight = mapTest.tileWorldSize * 0.1f;
         maxHeight = mapTest.tileWorldSize * 20f;
 
@@ -50,6 +63,8 @@ public class MapCameraController : MonoBehaviour
 
         transform.position = new Vector3(centerX, height, centerZ);
         transform.rotation = Quaternion.Euler(90, 0, 0);
+
+        Debug.Log($"[Camera] Positioned at center={mapTest.mapCenter} height={height:F0}");
     }
 
     void HandleDrag()
@@ -68,7 +83,6 @@ public class MapCameraController : MonoBehaviour
             Vector3 delta = Input.mousePosition - _dragOrigin;
             _dragOrigin = Input.mousePosition;
 
-            // Scale by current height and tileWorldSize so panning feels consistent
             float scale = (transform.position.y / mapTest.tileWorldSize) * dragSpeed * 0.01f;
             Vector3 move = new Vector3(-delta.x * scale, 0, -delta.y * scale);
             transform.position += move;
@@ -80,7 +94,6 @@ public class MapCameraController : MonoBehaviour
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) < 0.001f) return;
 
-        // Scale zoom step by tileWorldSize
         float step = scroll * zoomSpeed * mapTest.tileWorldSize;
         float newY = transform.position.y - step;
         newY = Mathf.Clamp(newY, minHeight, maxHeight);

@@ -6,6 +6,7 @@ public class TileRenderer : MonoBehaviour
 {
     public MapMaterials materials;
     public TMP_FontAsset labelFont;
+    public MapZoom mapZoom;
 
     private float tileWorldSize;
     private float tileOffsetX;
@@ -13,21 +14,30 @@ public class TileRenderer : MonoBehaviour
     private Dictionary<string, Material> _defaultMaterials = new();
     private float _highestPolygonY = 0f;
 
+    // Store lines and labels for per-frame zoom updates
+    private List<ZoomLine> _lines = new();
+    private List<ZoomLabel> _labels = new();
+
+    private struct ZoomLine
+    {
+        public LineRenderer lr;
+        public string featureClass;
+        public float baseWidth;
+        public float minZoom; // hide below this zoom
+    }
+
+    private struct ZoomLabel
+    {
+        public TextMeshPro tmp;
+        public string layerName;
+        public float minZoom;
+    }
+
     private static readonly string[] LayerOrder = new[]
     {
-        "landcover",
-        "landuse",
-        "water",
-        "park",
-        "waterway",
-        "boundary",
-        "building",
-        "transportation",
-        "transportation_name",
-        "water_name",
-        "place",
-        "poi",
-        "housenumber",
+        "landcover", "landuse", "water", "park", "waterway", "boundary",
+        "building", "transportation", "transportation_name", "water_name",
+        "place", "poi", "housenumber",
     };
 
     private static readonly string[] LandcoverOrder = new[]
@@ -41,8 +51,9 @@ public class TileRenderer : MonoBehaviour
         tileOffsetX = offsetX;
         tileOffsetZ = offsetZ;
         _highestPolygonY = 0f;
+        _lines.Clear();
+        _labels.Clear();
 
-        // Always keep the tile GO at origin - world offset is baked into geometry
         transform.localPosition = Vector3.zero;
 
         var layerMap = new Dictionary<string, MVTLayer>();
@@ -54,11 +65,31 @@ public class TileRenderer : MonoBehaviour
         foreach (var layerName in LayerOrder)
         {
             if (!layerMap.TryGetValue(layerName, out var layer)) continue;
-
             if (layerName == "landcover")
                 RenderLandcoverOrdered(layer, ref polygonIndex);
             else
                 RenderLayer(layer, ref polygonIndex);
+        }
+    }
+
+    void Update()
+    {
+        float zoom = mapZoom.VisualZoom;
+
+        foreach (var line in _lines)
+        {
+            bool visible = zoom >= line.minZoom;
+            line.lr.gameObject.SetActive(visible);
+            if (visible)
+                line.lr.widthMultiplier = GetZoomedLineWidth(line.featureClass, zoom);
+        }
+
+        foreach (var label in _labels)
+        {
+            bool visible = zoom >= label.minZoom;
+            label.tmp.gameObject.SetActive(visible);
+            if (visible)
+                label.tmp.fontSize = GetZoomedFontSize(label.layerName, zoom);
         }
     }
 
@@ -112,10 +143,10 @@ public class TileRenderer : MonoBehaviour
             switch (layer.Name)
             {
                 case "transportation":
-                    RenderLine(feature, layer, mat, layer.Name + "/" + featureClass);
+                    RenderLine(feature, layer, mat, layer.Name + "/" + featureClass, featureClass);
                     break;
                 case "waterway":
-                    RenderLine(feature, layer, mat, layer.Name + "/" + featureClass);
+                    RenderLine(feature, layer, mat, layer.Name + "/" + featureClass, featureClass);
                     break;
                 case "building":
                     RenderPolygon(feature, layer, mat, "building", featureClass, polygonIndex++);
@@ -126,7 +157,7 @@ public class TileRenderer : MonoBehaviour
                     RenderPolygon(feature, layer, mat, layer.Name + "/" + featureClass, featureClass, polygonIndex++);
                     break;
                 case "boundary":
-                    RenderLine(feature, layer, mat, "boundary");
+                    RenderLine(feature, layer, mat, "boundary", "boundary");
                     break;
                 case "transportation_name":
                 case "water_name":
@@ -143,17 +174,9 @@ public class TileRenderer : MonoBehaviour
         }
     }
 
-    // Convert tile coordinate to world position with baked offset
-    Vector3 ToWorld(int tx, int ty, int extent, float yOffset = 0f)
+    void RenderLine(MVTFeature feature, MVTLayer layer, Material mat, string label, string featureClass)
     {
-        float x = tileOffsetX + ((float)tx / extent) * tileWorldSize;
-        float z = tileOffsetZ + ((float)ty / extent) * tileWorldSize;
-        return new Vector3(x, yOffset, z);
-    }
-
-    void RenderLine(MVTFeature feature, MVTLayer layer, Material mat, string label)
-    {
-        if (mat == null) return;
+        float minZoom = GetLineMinZoom(featureClass);
 
         foreach (var ring in feature.Geometry)
         {
@@ -167,23 +190,28 @@ public class TileRenderer : MonoBehaviour
             lr.material = mat;
             lr.positionCount = ring.Count;
             lr.useWorldSpace = true;
-
-            float width = GetLineWidth(label);
-            lr.startWidth = lr.endWidth = width;
             lr.numCapVertices = 4;
+
+            float baseWidth = GetBaseLineWidth(featureClass);
+            lr.startWidth = lr.endWidth = baseWidth;
 
             for (int i = 0; i < ring.Count; i++)
                 lr.SetPosition(i, ToWorld(ring[i].x, ring[i].y, layer.Extent));
+
+            _lines.Add(new ZoomLine
+            {
+                lr = lr,
+                featureClass = featureClass,
+                baseWidth = baseWidth,
+                minZoom = minZoom,
+            });
         }
     }
 
     void RenderPolygon(MVTFeature feature, MVTLayer layer, Material mat, string label, string featureClass, int index)
     {
-        if (mat == null) return;
-        if (feature.Geometry.Count == 0) return;
-
         var outerRing = feature.Geometry[0];
-        if (outerRing.Count < 3) return;
+        if (outerRing.Count < 3) return; // Should this return?
 
         var go = new GameObject(label);
         go.transform.parent = transform;
@@ -214,7 +242,6 @@ public class TileRenderer : MonoBehaviour
 
     void RenderLabel(MVTFeature feature, MVTLayer layer, string text)
     {
-        if (labelFont == null) return;
         if (feature.Geometry.Count == 0 || feature.Geometry[0].Count == 0) return;
 
         var ring = feature.Geometry[0];
@@ -232,6 +259,128 @@ public class TileRenderer : MonoBehaviour
         tmp.fontSize = tileWorldSize * 0.02f;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = Color.white;
+
+        float minZoom = GetLabelMinZoom(layer.Name);
+        _labels.Add(new ZoomLabel { tmp = tmp, layerName = layer.Name, minZoom = minZoom });
+    }
+
+    // OSM-standard minimum zoom per road class
+    float GetLineMinZoom(string featureClass)
+    {
+        return featureClass switch
+        {
+            "motorway"  => 6f,
+            "trunk"     => 8f,
+            "primary"   => 10f,
+            "secondary" => 11f,
+            "tertiary"  => 12f,
+            "minor"     => 13f,
+            "service"   => 14f,
+            "path"      => 14f,
+            "cycleway"  => 14f,
+            "track"     => 14f,
+            "rail"      => 12f,
+            "ferry"     => 10f,
+            "boundary"  => 6f,
+            "river"     => 10f,
+            "canal"     => 11f,
+            "stream"    => 13f,
+            "ditch"     => 14f,
+            _           => 12f,
+        };
+    }
+
+    // OSM-standard minimum zoom per label type
+    float GetLabelMinZoom(string layerName)
+    {
+        return layerName switch
+        {
+            "place"              => 6f,
+            "water_name"         => 10f,
+            "transportation_name"=> 13f,
+            "poi"                => 15f,
+            "housenumber"        => 17f,
+            _                    => 12f,
+        };
+    }
+
+    // Base line width at zoom 14 in world units
+    float GetBaseLineWidth(string featureClass)
+    {
+        return featureClass switch
+        {
+            "motorway"  => tileWorldSize * 0.008f,
+            "trunk"     => tileWorldSize * 0.007f,
+            "primary"   => tileWorldSize * 0.006f,
+            "secondary" => tileWorldSize * 0.005f,
+            "tertiary"  => tileWorldSize * 0.004f,
+            "minor"     => tileWorldSize * 0.003f,
+            "service"   => tileWorldSize * 0.002f,
+            "path"      => tileWorldSize * 0.001f,
+            "cycleway"  => tileWorldSize * 0.0015f,
+            "rail"      => tileWorldSize * 0.002f,
+            "river"     => tileWorldSize * 0.005f,
+            "canal"     => tileWorldSize * 0.004f,
+            "stream"    => tileWorldSize * 0.002f,
+            "ditch"     => tileWorldSize * 0.001f,
+            "boundary"  => tileWorldSize * 0.001f,
+            _           => tileWorldSize * 0.002f,
+        };
+    }
+
+    // Scale line width based on current zoom (doubles every zoom level like OSM)
+    float GetZoomedLineWidth(string featureClass, float zoom)
+    {
+        float baseWidth = GetBaseLineWidth(featureClass);
+        // Each zoom level in doubles the visual size, anchored at zoom 14
+        float scale = Mathf.Pow(2f, zoom - 14f);
+        return baseWidth * scale;
+    }
+
+    // Scale font size based on zoom and label type
+    float GetZoomedFontSize(string layerName, float zoom)
+    {
+        float baseSize = layerName switch
+        {
+            "place"               => tileWorldSize * 0.04f,
+            "water_name"          => tileWorldSize * 0.025f,
+            "transportation_name" => tileWorldSize * 0.018f,
+            "poi"                 => tileWorldSize * 0.015f,
+            "housenumber"         => tileWorldSize * 0.01f,
+            _                     => tileWorldSize * 0.02f,
+        };
+
+        float scale = Mathf.Pow(2f, zoom - 14f);
+        return baseSize * scale;
+    }
+
+    Vector3 ToWorld(int tx, int ty, int extent, float yOffset = 0f)
+    {
+        float x = tileOffsetX + ((float)tx / extent) * tileWorldSize;
+        float z = tileOffsetZ + ((float)ty / extent) * tileWorldSize;
+        return new Vector3(x, yOffset, z);
+    }
+
+    float GetLayerYOffset(string layerName, string featureClass = "")
+    {
+        return layerName switch
+        {
+            "landcover" => featureClass switch
+            {
+                "grass"    => 0f,
+                "farmland" => 0.001f,
+                "wetland"  => 0.002f,
+                "sand"     => 0.003f,
+                "wood"     => 0.004f,
+                "forest"   => 0.004f,
+                _          => 0f,
+            },
+            "landuse"   => 0.01f,
+            "water"     => 0.02f,
+            "park"      => 0.03f,
+            "building"  => 0.04f,
+            _           => 0f,
+        };
     }
 
     Material GetDefaultMaterial(string layer = "", string featureClass = "")
@@ -287,37 +436,15 @@ public class TileRenderer : MonoBehaviour
         return mat;
     }
 
-    float GetLayerYOffset(string layerName, string featureClass = "")
-    {
-        return layerName switch
-        {
-            "landcover" => featureClass switch
-            {
-                "grass"    => 0f,
-                "farmland" => 0.001f,
-                "wetland"  => 0.002f,
-                "sand"     => 0.003f,
-                "wood"     => 0.004f,
-                "forest"   => 0.004f,
-                _          => 0f,
-            },
-            "landuse"   => 0.01f,
-            "water"     => 0.02f,
-            "park"      => 0.03f,
-            "building"  => 0.04f,
-            _           => 0f,
-        };
-    }
-
     float GetLineWidth(string label)
     {
-        if (label.Contains("motorway"))  return 2f;
-        if (label.Contains("trunk"))     return 1.8f;
-        if (label.Contains("primary"))   return 1.5f;
-        if (label.Contains("secondary")) return 1.2f;
-        if (label.Contains("tertiary"))  return 1f;
-        if (label.Contains("rail"))      return 0.8f;
-        return 0.5f;
+        if (label.Contains("motorway"))  return tileWorldSize * 0.008f;
+        if (label.Contains("trunk"))     return tileWorldSize * 0.007f;
+        if (label.Contains("primary"))   return tileWorldSize * 0.006f;
+        if (label.Contains("secondary")) return tileWorldSize * 0.005f;
+        if (label.Contains("tertiary"))  return tileWorldSize * 0.004f;
+        if (label.Contains("rail"))      return tileWorldSize * 0.002f;
+        return tileWorldSize * 0.002f;
     }
 
     List<int> Triangulate(List<Vector3> verts)
@@ -341,10 +468,8 @@ public class TileRenderer : MonoBehaviour
                 tris.Add(a); tris.Add(b); tris.Add(c);
                 indices.RemoveAt((idx + 1) % count);
             }
-            else
-            {
-                idx++;
-            }
+            else idx++;
+
             idx %= indices.Count;
         }
 

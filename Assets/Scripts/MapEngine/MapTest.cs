@@ -3,6 +3,7 @@ using UnityEngine;
 public class MapTest : MonoBehaviour
 {
     public TileRenderer tilePrefab;
+    public MapZoom mapZoom;
     public float tileWorldSize = 1000f;
 
     private const int ZOOM = 14;
@@ -19,15 +20,12 @@ public class MapTest : MonoBehaviour
 
     async void Start()
     {
-        if (mapRoot != null)
-            Destroy(mapRoot);
+        Destroy(mapRoot);
 
         mapRoot = new GameObject("MapRoot");
 
         var reader = new PMTilesReader();
         await reader.Initialize();
-
-        if (mapRoot == null) return;
 
         var tiles = reader.GetAllTilesAtZoom(ZOOM);
 
@@ -36,12 +34,7 @@ public class MapTest : MonoBehaviour
 
         foreach (var (x, y) in tiles)
         {
-            if (mapRoot == null) return;
-
             byte[] tileData = await reader.GetTile(ZOOM, x, y);
-
-            if (mapRoot == null) return;
-            if (tileData == null) continue;
 
             var layers = MVTParser.Parse(tileData);
 
@@ -55,6 +48,7 @@ public class MapTest : MonoBehaviour
             float offsetZ = (y - MIN_Y) * tileWorldSize;
 
             var tr = tileGO.GetComponent<TileRenderer>();
+            tr.mapZoom = mapZoom;
             tr.Render(layers, ZOOM, x, y, tileWorldSize, offsetX, offsetZ);
 
             if (x < minTileX) minTileX = x;
