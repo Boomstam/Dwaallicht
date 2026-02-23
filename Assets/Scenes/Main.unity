@@ -637,7 +637,7 @@ MonoBehaviour:
   tilePrefab: {fileID: 1083821392}
   mapZoom: {fileID: 330585549}
   tileWorldSize: 1000
-  showLabels: 0
+  showLabels: 1
   mapCenter: {x: 0, y: 0, z: 0}
   mapWidth: 0
   mapHeight: 0

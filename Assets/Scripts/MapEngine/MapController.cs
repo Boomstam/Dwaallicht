@@ -63,17 +63,22 @@ public class MapController : MonoBehaviour
         sw.Restart();
 
         // ── Step 2: Parse MVT + collect geometry in parallel (no Unity API) ───
+        int maxTileXPre = tiles.Max(t => t.x);
+        int minTileXPre = tiles.Min(t => t.x);
+        float mapWidthX = (maxTileXPre - minTileXPre + 1) * tileWorldSize;
+
         var collectTasks = allData.Select((data, i) =>
         {
             var (x, y)  = tiles[i];
             float offX  = (x - MIN_X) * tileWorldSize;
             float offZ  = (y - MIN_Y) * tileWorldSize;
+            if (i == 0) Debug.Log($"[Coords] tile({x},{y}) → worldX={offX:F0} worldZ={offZ:F0}  (MIN_X={MIN_X} MIN_Y={MIN_Y})");
 
             return Task.Run(() =>
             {
                 if (data == null || data.Length == 0) return null;
                 var layers = MVTParser.Parse(data);
-                return TileGeometryCollector.Collect(layers, x, y, tileWorldSize, offX, offZ);
+                return TileGeometryCollector.Collect(layers, x, y, tileWorldSize, offX, offZ, mapWidthX);
             });
         });
 
@@ -111,15 +116,18 @@ public class MapController : MonoBehaviour
 
         long uploadMs = sw.ElapsedMilliseconds;
 
-        float worldMinX = (minTileX - MIN_X) * tileWorldSize;
+        float worldMinX = (minTileX - MIN_X)     * tileWorldSize;
         float worldMaxX = (maxTileX - MIN_X + 1) * tileWorldSize;
-        float worldMinZ = (minTileY - MIN_Y) * tileWorldSize;
+        float worldMinZ = (minTileY - MIN_Y)     * tileWorldSize;
         float worldMaxZ = (maxTileY - MIN_Y + 1) * tileWorldSize;
 
         mapWidth  = worldMaxX - worldMinX;
         mapHeight = worldMaxZ - worldMinZ;
         mapCenter = new Vector3(worldMinX + mapWidth * 0.5f, 0, worldMinZ + mapHeight * 0.5f);
         isLoaded  = true;
+
+        Debug.Log($"[Coords] worldX range [{worldMinX:F0} → {worldMaxX:F0}]  worldZ range [{worldMinZ:F0} → {worldMaxZ:F0}]");
+        Debug.Log($"[Coords] mapCenter={mapCenter}  tileX range [{minTileX}→{maxTileX}]  tileY range [{minTileY}→{maxTileY}]");
 
         Debug.Log($"[MapController] TOTAL {tiles.Count} tiles | io={ioMs}ms collect={collectMs}ms upload={uploadMs}ms");
         Debug.Log($"[MapController] Center={mapCenter} Width={mapWidth} Height={mapHeight}");

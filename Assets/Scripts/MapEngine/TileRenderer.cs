@@ -141,7 +141,7 @@ public class TileRenderer : MonoBehaviour
             var go = new GameObject("label:" + lbl.text);
             go.transform.SetParent(transform, false);
             go.transform.position = new Vector3(lbl.wx, lbl.wy, lbl.wz);
-            go.transform.rotation = Quaternion.Euler(90, 0, 0);
+            go.transform.rotation = Quaternion.Euler(90, 0, 180);
 
             var tmp       = go.AddComponent<TextMeshPro>();
             tmp.font      = labelFont;
@@ -247,9 +247,10 @@ public class TileRenderer : MonoBehaviour
         {
             for (int i = 0; i < ring.Count - 1; i++)
             {
-                float ax = offsetX + ((float)ring[i].x     / extent) * worldSize;
+                // X is mirrored: offsetX already flipped, tile-local X runs right-to-left
+                float ax = offsetX + (1.0f - (float)ring[i].x     / extent) * worldSize;
                 float az = offsetZ + ((float)ring[i].y     / extent) * worldSize;
-                float bx = offsetX + ((float)ring[i + 1].x / extent) * worldSize;
+                float bx = offsetX + (1.0f - (float)ring[i + 1].x / extent) * worldSize;
                 float bz = offsetZ + ((float)ring[i + 1].y / extent) * worldSize;
 
                 Vector3 a   = new Vector3(ax, 0f, az);

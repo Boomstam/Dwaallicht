@@ -24,7 +24,7 @@ public class MapCameraController : MonoBehaviour
 
     void Awake()
     {
-        transform.rotation = Quaternion.Euler(90, 0, 0);
+        transform.rotation = Quaternion.Euler(90, 0, 180);
     }
 
     void Update()
@@ -60,7 +60,9 @@ public class MapCameraController : MonoBehaviour
         height = Mathf.Clamp(height, minHeight, maxHeight);
 
         transform.position = new Vector3(centerX, height, centerZ);
-        transform.rotation = Quaternion.Euler(90, 0, 0);
+        transform.rotation = Quaternion.Euler(90, 0, 180);
+
+        Debug.Log($"[Coords] Camera pos={transform.position}  screen-right (world)={transform.right}  screen-up (world)={transform.up}");
 
         Debug.Log($"[Camera] Positioned at center={mapController.mapCenter} height={height:F0}");
     }
@@ -82,7 +84,8 @@ public class MapCameraController : MonoBehaviour
             _dragOrigin = Input.mousePosition;
 
             float scale = (transform.position.y / mapController.tileWorldSize) * dragSpeed * 0.01f;
-            Vector3 move = new Vector3(-delta.x * scale, 0, -delta.y * scale);
+            // Euler(90,0,180): screen-right=world+X, screen-up=world-Z
+            Vector3 move = new Vector3(delta.x * scale, 0, delta.y * scale);
             transform.position += move;
         }
     }

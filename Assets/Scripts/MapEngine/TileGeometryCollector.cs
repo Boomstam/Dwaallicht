@@ -68,13 +68,19 @@ public static class TileGeometryCollector
         List<MVTLayer> layers,
         int tileX, int tileY,
         float tileWorldSize,
-        float offsetX, float offsetZ)
+        float offsetX, float offsetZ,
+        float mapWidthX)
     {
+        // Mirror X so that east (higher tileX) maps to lower worldX,
+        // matching screen-right = world -X with north-up camera.
+        // offsetX passed in is (tileX-MIN_X)*size; mirrored = mapWidthX - offsetX - tileWorldSize
+        float mirroredOffX = mapWidthX - offsetX - tileWorldSize;
+
         var data = new TileGeometryData
         {
             tileX     = tileX,
             tileY     = tileY,
-            offsetX   = offsetX,
+            offsetX   = mirroredOffX,   // TileRenderer reads this for line rendering
             offsetZ   = offsetZ,
             worldSize = tileWorldSize,
         };
@@ -99,10 +105,10 @@ public static class TileGeometryCollector
 
             if (layerName == "landcover")
                 CollectLandcoverOrdered(layer, ref polygonIndex, ref highestPolyY,
-                                        tileWorldSize, offsetX, offsetZ, polyAcc);
+                                        tileWorldSize, mirroredOffX, offsetZ, polyAcc);
             else
                 CollectLayer(layer, ref polygonIndex, ref highestPolyY,
-                             tileWorldSize, offsetX, offsetZ,
+                             tileWorldSize, mirroredOffX, offsetZ,
                              polyAcc, lineAcc, data.labels, seenNames);
         }
 
@@ -275,22 +281,15 @@ public static class TileGeometryCollector
         var triIndices = Earcut.Tessellate(earcutData, holeIndices);
         if (triIndices.Count == 0) return;
 
-        // MVT tile coordinates are Y-down (origin top-left), but we map Y→Z in world space.
-        // This flips the winding order from CCW to CW, so Unity's backface culling hides
-        // every polygon. Reverse each triangle (swap indices 1 and 2) to restore CCW.
-        for (int i = 0; i < triIndices.Count; i += 3)
-        {
-            int tmp = triIndices[i + 1];
-            triIndices[i + 1] = triIndices[i + 2];
-            triIndices[i + 2] = tmp;
-        }
+        // Winding: MVT Y-down flips CW, X-mirror flips back CCW — no manual reversal needed.
 
         int vertCount = earcutData.Count / 2;
         var verts = new List<float>(vertCount * 3);
         for (int i = 0; i < vertCount; i++)
         {
-            float wx = offsetX + ((float)(earcutData[i * 2]     / layer.Extent)) * tileWorldSize;
-            float wz = offsetZ + ((float)(earcutData[i * 2 + 1] / layer.Extent)) * tileWorldSize;
+            // X is mirrored: offsetX is already flipped, and tile-local X runs right-to-left
+            float wx = offsetX + (1.0f - (float)(earcutData[i * 2]     / layer.Extent)) * tileWorldSize;
+            float wz = offsetZ + (float)(earcutData[i * 2 + 1] / layer.Extent) * tileWorldSize;
             verts.Add(wx);
             verts.Add(yOffset);
             verts.Add(wz);
@@ -384,7 +383,7 @@ public static class TileGeometryCollector
         var ring = feature.Geometry[0];
         var pt   = ring[ring.Count / 2];
 
-        float wx = offsetX + ((float)pt.x / layer.Extent) * tileWorldSize;
+        float wx = offsetX + (1.0f - (float)pt.x / layer.Extent) * tileWorldSize;
         float wz = offsetZ + ((float)pt.y / layer.Extent) * tileWorldSize;
         float wy = highestPolyY + tileWorldSize * 0.000001f;
 
