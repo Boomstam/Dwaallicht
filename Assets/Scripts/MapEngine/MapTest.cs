@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 public class MapTest : MonoBehaviour
@@ -30,11 +31,8 @@ public class MapTest : MonoBehaviour
         var tiles = reader.GetAllTilesAtZoom(ZOOM);
         var sw    = System.Diagnostics.Stopwatch.StartNew();
 
-        // ── Fetch all tile bytes in parallel ────────────────────────────────
-        // IO is the bottleneck (49s sequential vs ~1s parallel).
-        // PMTilesReader.ReadBytesAsync is thread-safe via its internal lock.
+        // ── Step 1: Fetch all tile bytes in parallel ──────────────────────────
         Debug.Log($"[MapTest] Fetching {tiles.Count} tiles in parallel...");
-
         var fetchTasks = new Task<byte[]>[tiles.Count];
         for (int i = 0; i < tiles.Count; i++)
         {
@@ -47,35 +45,53 @@ public class MapTest : MonoBehaviour
         Debug.Log($"[MapTest] All IO done in {ioMs}ms");
         sw.Restart();
 
-        // ── Parse + render on main thread (Unity API requires main thread) ──
+        // ── Step 2: Parse MVT + collect geometry in parallel (no Unity API) ───
+        var collectTasks = allData.Select((data, i) =>
+        {
+            var (x, y)  = tiles[i];
+            float offX  = (x - MIN_X) * tileWorldSize;
+            float offZ  = (y - MIN_Y) * tileWorldSize;
+
+            return Task.Run(() =>
+            {
+                if (data == null || data.Length == 0) return null;
+                var layers = MVTParser.Parse(data);
+                return TileGeometryCollector.Collect(layers, x, y, tileWorldSize, offX, offZ);
+            });
+        });
+
+        TileGeometryCollector.TileGeometryData[] geometries =
+            await Task.WhenAll(collectTasks);
+
+        long collectMs = sw.ElapsedMilliseconds;
+        Debug.Log($"[MapTest] All collect done in {collectMs}ms");
+        sw.Restart();
+
+        // ── Step 3: Upload geometry on main thread (Unity API) ────────────────
         int minTileX = int.MaxValue, maxTileX = int.MinValue;
         int minTileY = int.MaxValue, maxTileY = int.MinValue;
 
-        for (int i = 0; i < tiles.Count; i++)
+        for (int i = 0; i < geometries.Length; i++)
         {
-            var (x, y)   = tiles[i];
-            byte[] data  = allData[i];
-            if (data == null || data.Length == 0) continue;
-
-            var layers = MVTParser.Parse(data);
+            var geo = geometries[i];
+            if (geo == null) continue;
 
             var tileGO = Instantiate(tilePrefab.gameObject);
-            tileGO.name             = $"Tile_{x}_{y}";
+            tileGO.name             = $"Tile_{geo.tileX}_{geo.tileY}";
             tileGO.transform.parent = mapRoot.transform;
             tileGO.SetActive(true);
 
-            float offsetX = (x - MIN_X) * tileWorldSize;
-            float offsetZ = (y - MIN_Y) * tileWorldSize;
-
             var tr = tileGO.GetComponent<TileRenderer>();
             tr.mapZoom = mapZoom;
-            tr.Render(layers, ZOOM, x, y, tileWorldSize, offsetX, offsetZ);
+            tr.UploadGeometry(geo);
 
-            if (x < minTileX) minTileX = x; if (x > maxTileX) maxTileX = x;
-            if (y < minTileY) minTileY = y; if (y > maxTileY) maxTileY = y;
+            if (geo.tileX < minTileX) minTileX = geo.tileX;
+            if (geo.tileX > maxTileX) maxTileX = geo.tileX;
+            if (geo.tileY < minTileY) minTileY = geo.tileY;
+            if (geo.tileY > maxTileY) maxTileY = geo.tileY;
         }
 
-        long renderMs = sw.ElapsedMilliseconds;
+        long uploadMs = sw.ElapsedMilliseconds;
 
         float worldMinX = (minTileX - MIN_X) * tileWorldSize;
         float worldMaxX = (maxTileX - MIN_X + 1) * tileWorldSize;
@@ -87,7 +103,7 @@ public class MapTest : MonoBehaviour
         mapCenter = new Vector3(worldMinX + mapWidth * 0.5f, 0, worldMinZ + mapHeight * 0.5f);
         isLoaded  = true;
 
-        Debug.Log($"[MapTest] TOTAL {tiles.Count} tiles | io={ioMs}ms render={renderMs}ms");
+        Debug.Log($"[MapTest] TOTAL {tiles.Count} tiles | io={ioMs}ms collect={collectMs}ms upload={uploadMs}ms");
         Debug.Log($"[MapTest] Center={mapCenter} Width={mapWidth} Height={mapHeight}");
 
         reader.Dispose();
