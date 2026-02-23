@@ -3,7 +3,7 @@ using UnityEngine;
 public class MapCameraController : MonoBehaviour
 {
     [Header("Map Reference")]
-    public MapTest mapTest;
+    public MapController mapController;
     public MapZoom mapZoom;
 
     [Header("Drag")]
@@ -29,7 +29,7 @@ public class MapCameraController : MonoBehaviour
 
     void Update()
     {
-        if (!_positioned && mapTest != null && mapTest.isLoaded)
+        if (!_positioned && mapController != null && mapController.isLoaded)
         {
             PositionOnMap();
             _positioned = true;
@@ -48,21 +48,21 @@ public class MapCameraController : MonoBehaviour
 
     void PositionOnMap()
     {
-        float centerX = mapTest.mapCenter.x;
-        float centerZ = mapTest.mapCenter.z;
+        float centerX = mapController.mapCenter.x;
+        float centerZ = mapController.mapCenter.z;
 
-        float largerDimension = Mathf.Max(mapTest.mapWidth, mapTest.mapHeight);
+        float largerDimension = Mathf.Max(mapController.mapWidth, mapController.mapHeight);
         float height = largerDimension * 0.7f;
 
-        minHeight = mapTest.tileWorldSize * 0.1f;
-        maxHeight = mapTest.tileWorldSize * 20f;
+        minHeight = mapController.tileWorldSize * 0.1f;
+        maxHeight = mapController.tileWorldSize * 20f;
 
         height = Mathf.Clamp(height, minHeight, maxHeight);
 
         transform.position = new Vector3(centerX, height, centerZ);
         transform.rotation = Quaternion.Euler(90, 0, 0);
 
-        Debug.Log($"[Camera] Positioned at center={mapTest.mapCenter} height={height:F0}");
+        Debug.Log($"[Camera] Positioned at center={mapController.mapCenter} height={height:F0}");
     }
 
     void HandleDrag()
@@ -81,7 +81,7 @@ public class MapCameraController : MonoBehaviour
             Vector3 delta = Input.mousePosition - _dragOrigin;
             _dragOrigin = Input.mousePosition;
 
-            float scale = (transform.position.y / mapTest.tileWorldSize) * dragSpeed * 0.01f;
+            float scale = (transform.position.y / mapController.tileWorldSize) * dragSpeed * 0.01f;
             Vector3 move = new Vector3(-delta.x * scale, 0, -delta.y * scale);
             transform.position += move;
         }
@@ -92,7 +92,7 @@ public class MapCameraController : MonoBehaviour
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) < 0.001f) return;
 
-        float step = scroll * zoomSpeed * mapTest.tileWorldSize;
+        float step = scroll * zoomSpeed * mapController.tileWorldSize;
         float newY = transform.position.y - step;
         newY = Mathf.Clamp(newY, minHeight, maxHeight);
         transform.position = new Vector3(transform.position.x, newY, transform.position.z);

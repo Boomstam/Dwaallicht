@@ -258,7 +258,7 @@ public static class TileGeometryCollector
         if (outerRing.Count < 3) return;
 
         float yOffset = GetLayerYOffset(layerName, featureClass)
-                      + index * (tileWorldSize * 0.000001f);
+                      + index * 0.0005f;
         if (yOffset > highestPolyY) highestPolyY = yOffset;
 
         var earcutData  = new List<double>();
@@ -274,6 +274,16 @@ public static class TileGeometryCollector
 
         var triIndices = Earcut.Tessellate(earcutData, holeIndices);
         if (triIndices.Count == 0) return;
+
+        // MVT tile coordinates are Y-down (origin top-left), but we map Y→Z in world space.
+        // This flips the winding order from CCW to CW, so Unity's backface culling hides
+        // every polygon. Reverse each triangle (swap indices 1 and 2) to restore CCW.
+        for (int i = 0; i < triIndices.Count; i += 3)
+        {
+            int tmp = triIndices[i + 1];
+            triIndices[i + 1] = triIndices[i + 2];
+            triIndices[i + 2] = tmp;
+        }
 
         int vertCount = earcutData.Count / 2;
         var verts = new List<float>(vertCount * 3);
@@ -392,22 +402,50 @@ public static class TileGeometryCollector
 
     // ── Zoom / offset tables ──────────────────────────────────────────────────
 
+    // Y-offsets keep layers visually separated without noticeable floating.
+    // At tileWorldSize=1000 and a top-down orthographic-ish camera, 0.5 world
+    // units per layer is imperceptible (< 0.03 degree tilt at height 1000).
+    //
+    // Per-polygon index step is now 0.0005 (was 0.001×tileWorldSize=1.0 — too big).
+    // That gives 100 polygons of headroom before the next layer base is reached.
+    //
+    // Layer stack (bottom → top):
+    //   0.00  landcover  (grass < farmland < wetland < sand < wood < forest)
+    //   0.50  landuse    (residential < industrial < commercial < retail < cemetery < military)
+    //   1.00  water      (lakes, ocean)
+    //   2.00  park       (nature_reserve < national_park < regular park)
+    //   2.50  building
     static float GetLayerYOffset(string layerName, string featureClass) => layerName switch
     {
         "landcover" => featureClass switch
         {
-            "grass"    => 0f,
-            "farmland" => 0.001f,
-            "wetland"  => 0.002f,
-            "sand"     => 0.003f,
-            "wood"     => 0.004f,
-            "forest"   => 0.004f,
-            _          => 0f,
+            "grass"    => 0.00f,
+            "farmland" => 0.05f,
+            "wetland"  => 0.10f,
+            "sand"     => 0.15f,
+            "wood"     => 0.20f,
+            "forest"   => 0.25f,
+            _          => 0.00f,
         },
-        "landuse"  => 0.01f,
-        "water"    => 0.02f,
-        "park"     => 0.03f,
-        "building" => 0.04f,
+        "landuse" => featureClass switch
+        {
+            "residential" => 0.50f,
+            "industrial"  => 0.55f,
+            "commercial"  => 0.60f,
+            "retail"      => 0.65f,
+            "cemetery"    => 0.70f,
+            "military"    => 0.75f,
+            _             => 0.50f,
+        },
+        "water"    => 1.00f,
+        "park"     => featureClass switch
+        {
+            "nature_reserve" => 2.00f,
+            "national_park"  => 2.05f,
+            "protected_area" => 2.05f,
+            _                => 2.10f,
+        },
+        "building" => 2.50f,
         _          => 0f,
     };
 

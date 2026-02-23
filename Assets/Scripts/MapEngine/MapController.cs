@@ -3,11 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-public class MapTest : MonoBehaviour
+public class MapController : MonoBehaviour
 {
     public TileRenderer tilePrefab;
     public MapZoom mapZoom;
     public float tileWorldSize = 1000f;
+
+    [Header("Display")]
+    [Tooltip("Uncheck to hide all map labels across all tiles.")]
+    public bool showLabels = true;
 
     private const int ZOOM  = 14;
     private const int MIN_X = 8384;
@@ -19,6 +23,19 @@ public class MapTest : MonoBehaviour
     [HideInInspector] public float   mapWidth;
     [HideInInspector] public float   mapHeight;
     [HideInInspector] public bool    isLoaded = false;
+
+    private bool _lastShowLabels = true;
+
+    void Update()
+    {
+        // Propagate showLabels toggle live — works both in editor play mode and builds
+        if (isLoaded && showLabels != _lastShowLabels)
+        {
+            _lastShowLabels = showLabels;
+            foreach (var tr in mapRoot.GetComponentsInChildren<TileRenderer>())
+                tr.showLabels = showLabels;
+        }
+    }
 
     async void Start()
     {
@@ -32,7 +49,7 @@ public class MapTest : MonoBehaviour
         var sw    = System.Diagnostics.Stopwatch.StartNew();
 
         // ── Step 1: Fetch all tile bytes in parallel ──────────────────────────
-        Debug.Log($"[MapTest] Fetching {tiles.Count} tiles in parallel...");
+        Debug.Log($"[MapController] Fetching {tiles.Count} tiles in parallel...");
         var fetchTasks = new Task<byte[]>[tiles.Count];
         for (int i = 0; i < tiles.Count; i++)
         {
@@ -42,7 +59,7 @@ public class MapTest : MonoBehaviour
         byte[][] allData = await Task.WhenAll(fetchTasks);
 
         long ioMs = sw.ElapsedMilliseconds;
-        Debug.Log($"[MapTest] All IO done in {ioMs}ms");
+        Debug.Log($"[MapController] All IO done in {ioMs}ms");
         sw.Restart();
 
         // ── Step 2: Parse MVT + collect geometry in parallel (no Unity API) ───
@@ -64,7 +81,7 @@ public class MapTest : MonoBehaviour
             await Task.WhenAll(collectTasks);
 
         long collectMs = sw.ElapsedMilliseconds;
-        Debug.Log($"[MapTest] All collect done in {collectMs}ms");
+        Debug.Log($"[MapController] All collect done in {collectMs}ms");
         sw.Restart();
 
         // ── Step 3: Upload geometry on main thread (Unity API) ────────────────
@@ -82,7 +99,8 @@ public class MapTest : MonoBehaviour
             tileGO.SetActive(true);
 
             var tr = tileGO.GetComponent<TileRenderer>();
-            tr.mapZoom = mapZoom;
+            tr.mapZoom    = mapZoom;
+            tr.showLabels = showLabels;
             tr.UploadGeometry(geo);
 
             if (geo.tileX < minTileX) minTileX = geo.tileX;
@@ -103,8 +121,8 @@ public class MapTest : MonoBehaviour
         mapCenter = new Vector3(worldMinX + mapWidth * 0.5f, 0, worldMinZ + mapHeight * 0.5f);
         isLoaded  = true;
 
-        Debug.Log($"[MapTest] TOTAL {tiles.Count} tiles | io={ioMs}ms collect={collectMs}ms upload={uploadMs}ms");
-        Debug.Log($"[MapTest] Center={mapCenter} Width={mapWidth} Height={mapHeight}");
+        Debug.Log($"[MapController] TOTAL {tiles.Count} tiles | io={ioMs}ms collect={collectMs}ms upload={uploadMs}ms");
+        Debug.Log($"[MapController] Center={mapCenter} Width={mapWidth} Height={mapHeight}");
 
         reader.Dispose();
     }

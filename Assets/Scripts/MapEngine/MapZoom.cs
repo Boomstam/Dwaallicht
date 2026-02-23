@@ -14,7 +14,7 @@ using UnityEngine;
 public class MapZoom : MonoBehaviour
 {
     [Header("Map Reference")]
-    public MapTest mapTest;
+    public MapController mapController;
 
     [Header("Zoom Range")]
     public float minVisualZoom = 10f;
@@ -35,7 +35,7 @@ public class MapZoom : MonoBehaviour
 
     void Start()
     {
-        _metersPerUnit = RealWorldTileWidthMeters / mapTest.tileWorldSize;
+        _metersPerUnit = RealWorldTileWidthMeters / mapController.tileWorldSize;
         Debug.Log($"[MapZoom] metersPerUnit={_metersPerUnit:F3}");
     }
 
@@ -43,7 +43,7 @@ public class MapZoom : MonoBehaviour
 
     void Update()
     {
-        if (mapTest == null || !mapTest.isLoaded) return;
+        if (mapController == null || !mapController.isLoaded) return;
 
         float heightMeters   = transform.position.y * _metersPerUnit;
         float metersPerPixel = (heightMeters * 2f) / Screen.width;

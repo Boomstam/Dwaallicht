@@ -47,9 +47,11 @@ public class TileRenderer : MonoBehaviour
     }
     private List<ZoomLabel> _labels = new();
 
-    private float _lastBuiltZoom  = -999f;
+    // Set by MapController — drives label visibility for all tiles uniformly
+    [HideInInspector] public bool showLabels = true;
+
+    private float _lastBuiltZoom    = -999f;
     private bool  _needsZoomRefresh = false;
-    private bool  _needsFirstZoomLog = false;  // set true after upload, fires once in Update
 
     private float _offsetX;
     private float _offsetZ;
@@ -82,7 +84,6 @@ public class TileRenderer : MonoBehaviour
         _labels.Clear();
         _lastBuiltZoom    = -999f;
         _needsZoomRefresh  = true;
-        _needsFirstZoomLog = true;
 
         transform.localPosition = Vector3.zero;
 
@@ -105,6 +106,8 @@ public class TileRenderer : MonoBehaviour
 
             mesh.vertices  = v3;
             mesh.triangles = pd.tris;
+            mesh.RecalculateNormals();   // Required for URP Lit — flat polys need up-facing normals
+            mesh.RecalculateBounds();    // Required for correct frustum culling
 
             var mat = ResolveMat(pd.layerName, pd.featureClass, "");
             go.AddComponent<MeshFilter>().sharedMesh       = mesh;
@@ -199,7 +202,7 @@ public class TileRenderer : MonoBehaviour
         int activeCount = 0;
         foreach (var label in _labels)
         {
-            bool visible = zoom >= label.minZoom;
+            bool visible = showLabels && zoom >= label.minZoom;
             label.tmp.gameObject.SetActive(visible);
             if (visible)
             {
@@ -434,7 +437,13 @@ public class TileRenderer : MonoBehaviour
             _          => new Color(0.85f, 0.85f, 0.85f),
         };
 
-        var mat = new Material(Shader.Find("Universal Render Pipeline/Lit")) { color = color };
+        // Use Unlit/Color so polygons always show their assigned color regardless of
+        // lighting setup. For a top-down map this is simpler and more predictable than Lit.
+        Shader unlitShader = Shader.Find("Unlit/Color");
+        if (unlitShader == null) unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (unlitShader == null) unlitShader = Shader.Find("Universal Render Pipeline/Lit");
+
+        var mat = new Material(unlitShader) { color = color };
         _defaultMaterialCache[key] = mat;
         return mat;
     }

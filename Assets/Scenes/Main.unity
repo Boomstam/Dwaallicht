@@ -259,7 +259,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.3
-  far clip plane: 10000
+  far clip plane: 20000
   field of view: 60
   orthographic: 0
   orthographic size: 5
@@ -349,7 +349,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 886c0cd2892e3417e821e38dbb3f7c47, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  mapTest: {fileID: 1413625303}
+  mapController: {fileID: 1413625303}
   mapZoom: {fileID: 330585549}
   dragSpeed: 50
   zoomSpeed: 1
@@ -367,7 +367,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 241b8f90220b042b28f78f228d97fb84, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  mapTest: {fileID: 1413625303}
+  mapController: {fileID: 1413625303}
   minVisualZoom: 10
   maxVisualZoom: 18
 --- !u!1 &410087039
@@ -589,6 +589,7 @@ MonoBehaviour:
   mapZoom: {fileID: 330585549}
   labelScale: 75
   charsPerLine: 20
+  showLabels: 0
 --- !u!1 &1413625301
 GameObject:
   m_ObjectHideFlags: 0
@@ -600,7 +601,7 @@ GameObject:
   - component: {fileID: 1413625302}
   - component: {fileID: 1413625303}
   m_Layer: 0
-  m_Name: MapTest
+  m_Name: MapController
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -636,6 +637,7 @@ MonoBehaviour:
   tilePrefab: {fileID: 1083821392}
   mapZoom: {fileID: 330585549}
   tileWorldSize: 1000
+  showLabels: 0
   mapCenter: {x: 0, y: 0, z: 0}
   mapWidth: 0
   mapHeight: 0
