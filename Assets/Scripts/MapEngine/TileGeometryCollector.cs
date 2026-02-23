@@ -15,16 +15,14 @@ public static class TileGeometryCollector
         public int   tileX, tileY;
         public float offsetX, offsetZ, worldSize;
 
-        // One entry per material key (layer/featureClass).
-        // Verts are flat: [x0,y0,z0, x1,y1,z1, ...]
-        public List<PolyMeshData>  polyMeshes  = new();
-        public List<LineGroupData> lineGroups  = new();
-        public List<LabelData>     labels      = new();
+        public List<PolyMeshData>  polyMeshes = new();
+        public List<LineGroupData> lineGroups = new();
+        public List<LabelData>     labels     = new();
     }
 
     public class PolyMeshData
     {
-        public string  matKey;          // e.g. "landcover/grass"
+        public string  matKey;
         public string  layerName;
         public string  featureClass;
         public float[] verts;           // flat XYZ
@@ -33,22 +31,24 @@ public static class TileGeometryCollector
 
     public class LineGroupData
     {
-        public string  matKey;
-        public string  layerName;
-        public string  featureClass;
-        public float   minZoom;
-        public int     extent;
+        public string matKey;
+        public string layerName;
+        public string featureClass;
+        public float  minZoom;
+        public int    extent;
         public List<List<(int x, int y)>> segments = new();
     }
 
     public class LabelData
     {
-        public float  wx, wy, wz;       // world position
+        public float  wx, wy, wz;
         public string text;
         public string layerName;
+        public string featureClass;     // e.g. "town", "village", "hamlet" for place layer
+        public int    rank;
     }
 
-    // ── Layer ordering (mirrors TileRenderer) ─────────────────────────────────
+    // ── Layer ordering ────────────────────────────────────────────────────────
 
     private static readonly string[] LayerOrder =
     {
@@ -79,12 +79,16 @@ public static class TileGeometryCollector
             worldSize = tileWorldSize,
         };
 
-        // Working accumulators — keyed by matKey
-        var polyAcc  = new Dictionary<string, PolyAccumulator>();
-        var lineAcc  = new Dictionary<string, LineGroupData>();
+        var polyAcc = new Dictionary<string, PolyAccumulator>();
+        var lineAcc = new Dictionary<string, LineGroupData>();
 
         var layerMap = new Dictionary<string, MVTLayer>();
         foreach (var l in layers) layerMap[l.Name] = l;
+
+        // Per-tile dedup: only suppress exact duplicate names within a single tile.
+        // Cross-tile duplicates are intentional — the label visibility system will
+        // handle showing only the closest/most-relevant one via zoom gating.
+        var seenNames = new HashSet<string>();
 
         float highestPolyY = 0f;
         int   polygonIndex = 0;
@@ -95,15 +99,13 @@ public static class TileGeometryCollector
 
             if (layerName == "landcover")
                 CollectLandcoverOrdered(layer, ref polygonIndex, ref highestPolyY,
-                                        tileWorldSize, offsetX, offsetZ,
-                                        polyAcc);
+                                        tileWorldSize, offsetX, offsetZ, polyAcc);
             else
                 CollectLayer(layer, ref polygonIndex, ref highestPolyY,
                              tileWorldSize, offsetX, offsetZ,
-                             polyAcc, lineAcc, data.labels);
+                             polyAcc, lineAcc, data.labels, seenNames);
         }
 
-        // Flatten poly accumulators into output
         foreach (var kv in polyAcc)
         {
             if (kv.Value.vertCount == 0) continue;
@@ -117,7 +119,6 @@ public static class TileGeometryCollector
             });
         }
 
-        // Flatten line accumulators into output
         foreach (var kv in lineAcc)
             data.lineGroups.Add(kv.Value);
 
@@ -163,26 +164,24 @@ public static class TileGeometryCollector
         float tileWorldSize, float offsetX, float offsetZ,
         Dictionary<string, PolyAccumulator> polyAcc,
         Dictionary<string, LineGroupData>   lineAcc,
-        List<LabelData> labels)
+        List<LabelData> labels,
+        HashSet<string> seenNames)
     {
         foreach (var feature in layer.Features)
         {
-            string fc   = GetProp(feature, "class");
-            string sub  = GetProp(feature, "subclass");
-            string name = GetProp(feature, "name");
+            string fc     = GetProp(feature, "class");
+            string name   = GetProp(feature, "name");
             string matKey = layer.Name + "/" + fc;
 
             switch (layer.Name)
             {
                 case "transportation":
                 case "waterway":
-                    AccumulateLine(feature, layer, matKey, fc,
-                                   lineAcc, tileWorldSize);
+                    AccumulateLine(feature, layer, matKey, fc, lineAcc);
                     break;
 
                 case "boundary":
-                    AccumulateLine(feature, layer, layer.Name + "/boundary", "boundary",
-                                   lineAcc, tileWorldSize);
+                    AccumulateLine(feature, layer, layer.Name + "/boundary", "boundary", lineAcc);
                     break;
 
                 case "building":
@@ -195,20 +194,35 @@ public static class TileGeometryCollector
                     break;
 
                 case "transportation_name":
-                case "water_name":
-                case "place":
-                case "poi":
-                    if (!string.IsNullOrEmpty(name))
-                        CollectLabel(feature, layer, name,
+                    // Only place if geometry is long + wide enough, and name not yet seen in this tile.
+                    if (!string.IsNullOrEmpty(name)
+                        && seenNames.Add(name)
+                        && RoadFitsLabel(feature, name))
+                    {
+                        CollectLabel(feature, layer, name, fc, rank: 10,
                                      highestPolyY, tileWorldSize, offsetX, offsetZ, labels);
+                    }
                     break;
 
-                case "housenumber":
-                    string hn = GetProp(feature, "housenumber");
-                    if (!string.IsNullOrEmpty(hn))
-                        CollectLabel(feature, layer, hn,
+                case "water_name":
+                    if (!string.IsNullOrEmpty(name) && seenNames.Add(name))
+                    {
+                        int rank = int.TryParse(GetProp(feature, "rank"), out int wr) ? wr : 5;
+                        CollectLabel(feature, layer, name, fc, rank,
                                      highestPolyY, tileWorldSize, offsetX, offsetZ, labels);
+                    }
                     break;
+
+                case "place":
+                    if (!string.IsNullOrEmpty(name) && seenNames.Add(name))
+                    {
+                        int rank = int.TryParse(GetProp(feature, "rank"), out int pr) ? pr : 10;
+                        CollectLabel(feature, layer, name, fc, rank,
+                                     highestPolyY, tileWorldSize, offsetX, offsetZ, labels);
+                    }
+                    break;
+
+                // poi and housenumber — skip entirely
             }
         }
     }
@@ -247,7 +261,6 @@ public static class TileGeometryCollector
                       + index * (tileWorldSize * 0.000001f);
         if (yOffset > highestPolyY) highestPolyY = yOffset;
 
-        // Pack all rings into flat double[] for Earcut
         var earcutData  = new List<double>();
         var holeIndices = new List<int>();
 
@@ -262,7 +275,6 @@ public static class TileGeometryCollector
         var triIndices = Earcut.Tessellate(earcutData, holeIndices);
         if (triIndices.Count == 0) return;
 
-        // Convert to flat XYZ float[]
         int vertCount = earcutData.Count / 2;
         var verts = new List<float>(vertCount * 3);
         for (int i = 0; i < vertCount; i++)
@@ -287,8 +299,7 @@ public static class TileGeometryCollector
     static void AccumulateLine(
         MVTFeature feature, MVTLayer layer,
         string matKey, string featureClass,
-        Dictionary<string, LineGroupData> lineAcc,
-        float tileWorldSize)
+        Dictionary<string, LineGroupData> lineAcc)
     {
         if (feature.Type != MVTFeature.GeomType.LineString &&
             feature.Type != MVTFeature.GeomType.Unknown) return;
@@ -311,10 +322,49 @@ public static class TileGeometryCollector
                 group.segments.Add(ring);
     }
 
+    // ── Road geometry fitness check ───────────────────────────────────────────
+
+    // In tile coords (extent = 4096)
+    private const float CharLengthInTileCoords = 180f;
+    private const float MinSegmentLength       = 250f;
+
+    static bool RoadFitsLabel(MVTFeature feature, string text)
+    {
+        float required = text.Length * CharLengthInTileCoords;
+
+        float bestRingLength = 0f;
+        float bestMinSegment = 0f;
+
+        foreach (var ring in feature.Geometry)
+        {
+            if (ring.Count < 2) continue;
+
+            float totalLen = 0f;
+            float minSeg   = float.MaxValue;
+
+            for (int i = 0; i < ring.Count - 1; i++)
+            {
+                float dx  = ring[i + 1].x - ring[i].x;
+                float dy  = ring[i + 1].y - ring[i].y;
+                float len = (float)System.Math.Sqrt(dx * dx + dy * dy);
+                totalLen += len;
+                if (len < minSeg) minSeg = len;
+            }
+
+            if (totalLen > bestRingLength)
+            {
+                bestRingLength = totalLen;
+                bestMinSegment = minSeg;
+            }
+        }
+
+        return bestRingLength >= required && bestMinSegment >= MinSegmentLength;
+    }
+
     // ── Label collection ──────────────────────────────────────────────────────
 
     static void CollectLabel(
-        MVTFeature feature, MVTLayer layer, string text,
+        MVTFeature feature, MVTLayer layer, string text, string featureClass, int rank,
         float highestPolyY, float tileWorldSize,
         float offsetX, float offsetZ,
         List<LabelData> labels)
@@ -330,15 +380,17 @@ public static class TileGeometryCollector
 
         labels.Add(new LabelData
         {
-            wx        = wx,
-            wy        = wy,
-            wz        = wz,
-            text      = text,
-            layerName = layer.Name,
+            wx           = wx,
+            wy           = wy,
+            wz           = wz,
+            text         = text,
+            layerName    = layer.Name,
+            featureClass = featureClass,
+            rank         = rank,
         });
     }
 
-    // ── Zoom / offset tables (must match TileRenderer) ────────────────────────
+    // ── Zoom / offset tables ──────────────────────────────────────────────────
 
     static float GetLayerYOffset(string layerName, string featureClass) => layerName switch
     {

@@ -5,6 +5,11 @@ using UnityEngine;
 /// At tileWorldSize=1000, one tile represents a real-world tile at zoom 14.
 /// A real zoom-14 tile is 9784m wide at the latitude of Belgium (~51°N).
 /// We use this to derive a continuous visual zoom from camera height.
+///
+/// Zoom direction: LOWER number = more zoomed OUT (overview).
+///                 HIGHER number = more zoomed IN (street level).
+/// minVisualZoom (~10) corresponds to the overview camera height.
+/// maxVisualZoom (~18) corresponds to maximum zoom-in.
 /// </summary>
 public class MapZoom : MonoBehaviour
 {
@@ -34,6 +39,8 @@ public class MapZoom : MonoBehaviour
         Debug.Log($"[MapZoom] metersPerUnit={_metersPerUnit:F3}");
     }
 
+    private bool _loggedStartupZoom = false;
+
     void Update()
     {
         if (mapTest == null || !mapTest.isLoaded) return;
@@ -42,13 +49,14 @@ public class MapZoom : MonoBehaviour
         float metersPerPixel = (heightMeters * 2f) / Screen.width;
         float rawZoom        = Mathf.Log(MetersPerPixelAtZoom0 / metersPerPixel, 2f);
 
-        // Snap to 2 decimal places.
-        // This kills floating-point noise from Mathf.Log that would otherwise
-        // produce a continuously drifting value, causing TileRenderer to
-        // trigger ribbon rebuilds on every frame even at rest.
         float snapped = Mathf.Round(Mathf.Clamp(rawZoom, minVisualZoom, maxVisualZoom) * 100f) / 100f;
 
-        // Only write when actually changed — downstream comparisons stay stable.
+        if (!_loggedStartupZoom)
+        {
+            _loggedStartupZoom = true;
+            Debug.Log($"[MapZoom] First zoom calc: cameraY={transform.position.y:F0} heightMeters={heightMeters:F0} rawZoom={rawZoom:F2} snapped={snapped:F2} (range {minVisualZoom}-{maxVisualZoom})");
+        }
+
         if (snapped != VisualZoom)
             VisualZoom = snapped;
     }

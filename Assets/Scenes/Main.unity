@@ -351,7 +351,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mapTest: {fileID: 1413625303}
   mapZoom: {fileID: 330585549}
-  dragSpeed: 1
+  dragSpeed: 50
   zoomSpeed: 1
   minHeight: 1
   maxHeight: 10000
@@ -587,6 +587,8 @@ MonoBehaviour:
   materials: {fileID: 0}
   labelFont: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   mapZoom: {fileID: 330585549}
+  labelScale: 75
+  charsPerLine: 20
 --- !u!1 &1413625301
 GameObject:
   m_ObjectHideFlags: 0

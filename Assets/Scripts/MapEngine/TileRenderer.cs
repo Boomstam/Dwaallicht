@@ -1,15 +1,11 @@
 using UnityEngine;
 using System.Collections.Generic;
 using TMPro;
-using EarcutNet;
 
 /// <summary>
 /// Renders a single MVT tile.
-///
-/// Geometry collection (CPU-heavy) is now done off the main thread by
-/// TileGeometryCollector.Collect(). This class only handles the Unity API
-/// upload phase (UploadGeometry) and the per-frame zoom-driven ribbon/label
-/// updates (Update).
+/// Geometry collection is done off the main thread by TileGeometryCollector.
+/// This class handles Unity API upload and per-frame zoom-driven updates.
 /// </summary>
 public class TileRenderer : MonoBehaviour
 {
@@ -17,13 +13,19 @@ public class TileRenderer : MonoBehaviour
     public TMP_FontAsset labelFont;
     public MapZoom       mapZoom;
 
-    // ── Zoom rebuild threshold ────────────────────────────────────────────────
+    [Header("Label Sizing")]
+    [Tooltip("Global multiplier for all label sizes. Tune in inspector.")]
+    public float labelScale = 35f;
+
+    [Tooltip("Characters per line before wrapping.")]
+    public int charsPerLine = 20;
+
+    // ── Constants ─────────────────────────────────────────────────────────────
     private const float ZoomRebuildThreshold = 0.15f;
+    private const float CharWidthFactor      = 0.55f;
 
     // ── Internal state ────────────────────────────────────────────────────────
-    private float _tileWorldSize;
 
-    // One entry per (matKey, featureClass) combination for lines
     private struct LineMaterialGroup
     {
         public string   featureClass;
@@ -35,29 +37,41 @@ public class TileRenderer : MonoBehaviour
     }
     private List<LineMaterialGroup> _lineGroups = new();
 
-    // Labels
     private struct ZoomLabel
     {
         public TextMeshPro tmp;
         public string      layerName;
+        public string      featureClass;  // "town", "village", "hamlet", etc.
         public float       minZoom;
+        public int         rank;
     }
     private List<ZoomLabel> _labels = new();
 
-    // Zoom tracking
-    private float _lastBuiltZoom = -999f;
+    private float _lastBuiltZoom  = -999f;
+    private bool  _needsZoomRefresh = false;
+    private bool  _needsFirstZoomLog = false;  // set true after upload, fires once in Update
 
-    // Update diagnostics (static = aggregated across all tile instances)
-    private static float _updateLogTimer     = 0f;
-    private static int   _updateRebuildCount = 0;
-    private static float _updateRebuildMs    = 0f;
+    private float _offsetX;
+    private float _offsetZ;
+    private float _worldSize;
 
-    // Fallback material cache (shared across all TileRenderer instances)
+    // Shared upload diagnostics
+    private static int  s_labelsTotal   = 0;
+    private static int  s_tilesUploaded = 0;
+    private static int  s_tilesExpected = 0;
+
     private static Dictionary<string, Material> _defaultMaterialCache = new();
 
     // ═════════════════════════════════════════════════════════════════════════
-    //  Public API — called on the main thread after background collection
+    //  Public API
     // ═════════════════════════════════════════════════════════════════════════
+
+    public static void ResetDiagnostics(int expectedTiles)
+    {
+        s_labelsTotal   = 0;
+        s_tilesUploaded = 0;
+        s_tilesExpected = expectedTiles;
+    }
 
     public void UploadGeometry(TileGeometryCollector.TileGeometryData geo)
     {
@@ -66,7 +80,9 @@ public class TileRenderer : MonoBehaviour
         _worldSize = geo.worldSize;
         _lineGroups.Clear();
         _labels.Clear();
-        _lastBuiltZoom = -999f;
+        _lastBuiltZoom    = -999f;
+        _needsZoomRefresh  = true;
+        _needsFirstZoomLog = true;
 
         transform.localPosition = Vector3.zero;
 
@@ -82,7 +98,6 @@ public class TileRenderer : MonoBehaviour
             if (pd.verts.Length / 3 > 65535)
                 mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
 
-            // Convert flat float[] → Vector3[]
             int vertCount = pd.verts.Length / 3;
             var v3 = new Vector3[vertCount];
             for (int i = 0; i < vertCount; i++)
@@ -117,9 +132,7 @@ public class TileRenderer : MonoBehaviour
             });
         }
 
-        // ── Labels ────────────────────────────────────────────────────────────
-        float initialZoom = (mapZoom != null) ? mapZoom.VisualZoom : 14f;
-
+        // ── Labels — create all, leave visibility to Update() ─────────────────
         foreach (var lbl in geo.labels)
         {
             var go = new GameObject("label:" + lbl.text);
@@ -131,24 +144,30 @@ public class TileRenderer : MonoBehaviour
             tmp.font      = labelFont;
             tmp.text      = lbl.text;
             tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color     = Color.white;
+            tmp.color     = GetLabelColor(lbl.layerName);
 
-            float minZoom = GetLabelMinZoom(lbl.layerName);
-            _labels.Add(new ZoomLabel { tmp = tmp, layerName = lbl.layerName, minZoom = minZoom });
+            // Start inactive — Update() will set correct state once zoom is valid
+            go.SetActive(false);
 
-            bool visible = initialZoom >= minZoom;
-            go.SetActive(visible);
-            if (visible)
-                tmp.fontSize = GetZoomedFontSize(lbl.layerName, initialZoom);
+            _labels.Add(new ZoomLabel
+            {
+                tmp          = tmp,
+                layerName    = lbl.layerName,
+                featureClass = lbl.featureClass,
+                minZoom      = GetLabelMinZoom(lbl.layerName, lbl.featureClass),
+                rank         = lbl.rank,
+            });
         }
 
-        // Build initial line ribbons
-        BuildAllLineRibbons(initialZoom);
-        _lastBuiltZoom = initialZoom;
+        // ── Diagnostics ───────────────────────────────────────────────────────
+        s_labelsTotal   += geo.labels.Count;
+        s_tilesUploaded++;
+        if (s_tilesUploaded == s_tilesExpected)
+            Debug.Log($"[Labels] {s_tilesExpected} tiles uploaded, {s_labelsTotal} total labels created.");
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    //  Unity Update — only acts when zoom changes meaningfully
+    //  Unity Update
     // ═════════════════════════════════════════════════════════════════════════
 
     void Update()
@@ -156,23 +175,19 @@ public class TileRenderer : MonoBehaviour
         if (mapZoom == null) return;
         float zoom = mapZoom.VisualZoom;
 
-        _updateLogTimer -= Time.deltaTime;
-        if (_updateLogTimer <= 0f)
-        {
-            Debug.Log($"[TileRenderer.Update x2s] rebuilds={_updateRebuildCount} tiles triggered, totalRibbonMs={_updateRebuildMs:F1}ms");
-            _updateLogTimer     = 2f;
-            _updateRebuildCount = 0;
-            _updateRebuildMs    = 0f;
-        }
+        // VisualZoom is 0 until the camera is positioned — wait for a valid value
+        if (zoom < 1f) return;
 
-        if (Mathf.Abs(zoom - _lastBuiltZoom) < ZoomRebuildThreshold) return;
-        _lastBuiltZoom = zoom;
+        bool zoomChanged = Mathf.Abs(zoom - _lastBuiltZoom) >= ZoomRebuildThreshold;
+        if (!zoomChanged && !_needsZoomRefresh) return;
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        _lastBuiltZoom   = zoom;
+        _needsZoomRefresh = false;
 
+        // Lines
         for (int i = 0; i < _lineGroups.Count; i++)
         {
-            var group   = _lineGroups[i];
+            var group    = _lineGroups[i];
             bool visible = zoom >= group.minZoom;
             group.mr.enabled = visible;
             if (visible)
@@ -180,16 +195,20 @@ public class TileRenderer : MonoBehaviour
                                   GetZoomedLineWidth(group.featureClass, zoom));
         }
 
+        // Labels
+        int activeCount = 0;
         foreach (var label in _labels)
         {
             bool visible = zoom >= label.minZoom;
             label.tmp.gameObject.SetActive(visible);
             if (visible)
-                label.tmp.fontSize = GetZoomedFontSize(label.layerName, zoom);
+            {
+                ApplyFontSize(label.tmp, label.layerName, label.featureClass, zoom);
+                activeCount++;
+            }
         }
 
-        _updateRebuildCount++;
-        _updateRebuildMs += sw.ElapsedMilliseconds;
+
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -213,9 +232,9 @@ public class TileRenderer : MonoBehaviour
                             List<List<(int x, int y)>> segments,
                             int extent, float lineWidth)
     {
-        float half    = lineWidth * 0.5f;
-        float offsetX = _offsetX;
-        float offsetZ = _offsetZ;
+        float half      = lineWidth * 0.5f;
+        float offsetX   = _offsetX;
+        float offsetZ   = _offsetZ;
         float worldSize = _worldSize;
 
         var verts = new List<Vector3>();
@@ -263,31 +282,73 @@ public class TileRenderer : MonoBehaviour
         mesh.SetTriangles(tris, 0);
     }
 
-    // ── Stored offsets (set during UploadGeometry, needed for ribbon rebuild) ─
-    private float _offsetX;
-    private float _offsetZ;
-    private float _worldSize;
+    // ═════════════════════════════════════════════════════════════════════════
+    //  Label sizing
+    // ═════════════════════════════════════════════════════════════════════════
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  Zoom helpers
-    // ═════════════════════════════════════════════════════════════════════════
+    void ApplyFontSize(TextMeshPro tmp, string layerName, string featureClass, float zoom)
+    {
+        // Base size from feature class — towns biggest, hamlets smallest
+        float classMult = layerName == "place" ? featureClass switch
+        {
+            "city"        => 2.0f,
+            "town"        => 1.4f,
+            "village"     => 1.0f,
+            "suburb"      => 0.85f,
+            "hamlet"      => 0.7f,
+            "neighbourhood" => 0.6f,
+            _             => 0.75f,
+        } : layerName switch
+        {
+            "water_name"          => 1.0f,
+            "transportation_name" => 0.6f,
+            _                     => 0.75f,
+        };
+
+        float baseSize = _worldSize * 0.035f;
+        // Keep labels a stable world-space size as camera moves.
+        // Reference point is zoom 10 (overview camera height).
+        float zoomCompensation = 1f / Mathf.Pow(2f, zoom - 10f);
+        float fontSize         = baseSize * classMult * labelScale * zoomCompensation;
+
+        tmp.fontSize = fontSize;
+        float rectWidth = charsPerLine * fontSize * CharWidthFactor;
+        tmp.rectTransform.sizeDelta = new Vector2(rectWidth, rectWidth * 2f);
+    }
+
+    /// <summary>
+    /// Zoom thresholds based on feature class, tuned to this app's zoom range (10-18).
+    /// Overview camera produces ~zoom 11.7, so towns must show at or below that.
+    /// </summary>
+    float GetLabelMinZoom(string layerName, string featureClass = "")
+    {
+        switch (layerName)
+        {
+            case "place":
+                return featureClass switch
+                {
+                    "city"          => 10f,
+                    "town"          => 10f,   // largest things in this region — always on
+                    "village"       => 11f,
+                    "suburb"        => 12f,
+                    "hamlet"        => 13f,
+                    "neighbourhood" => 14f,
+                    _               => 13f,
+                };
+
+            case "water_name":
+                return 11f;
+
+            case "transportation_name":
+                return 14f;
+
+            default:
+                return 10f;
+        }
+    }
 
     float GetZoomedLineWidth(string featureClass, float zoom) =>
         GetBaseLineWidth(featureClass) * Mathf.Pow(2f, zoom - 14f);
-
-    float GetZoomedFontSize(string layerName, float zoom)
-    {
-        float baseSize = layerName switch
-        {
-            "place"               => _worldSize * 0.04f,
-            "water_name"          => _worldSize * 0.025f,
-            "transportation_name" => _worldSize * 0.018f,
-            "poi"                 => _worldSize * 0.015f,
-            "housenumber"         => _worldSize * 0.01f,
-            _                     => _worldSize * 0.02f,
-        };
-        return baseSize * Mathf.Pow(2f, zoom - 14f);
-    }
 
     float GetBaseLineWidth(string featureClass) => featureClass switch
     {
@@ -309,14 +370,11 @@ public class TileRenderer : MonoBehaviour
         _           => _worldSize * 0.002f,
     };
 
-    float GetLabelMinZoom(string layerName) => layerName switch
+    Color GetLabelColor(string layerName) => layerName switch
     {
-        "place"               => 6f,
-        "water_name"          => 10f,
-        "transportation_name" => 13f,
-        "poi"                 => 15f,
-        "housenumber"         => 17f,
-        _                     => 12f,
+        "water_name"          => new Color(0.2f, 0.4f, 0.8f),
+        "transportation_name" => new Color(0.25f, 0.25f, 0.25f),
+        _                     => new Color(0.1f, 0.1f, 0.1f),
     };
 
     // ═════════════════════════════════════════════════════════════════════════

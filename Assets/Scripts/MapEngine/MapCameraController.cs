@@ -41,9 +41,7 @@ public class MapCameraController : MonoBehaviour
         // Log zoom level once per second while moving
         _logTimer -= Time.deltaTime;
         if (_logTimer <= 0f)
-        {
-            Debug.Log($"[Camera] height={transform.position.y:F0} visualZoom={mapZoom.VisualZoom:F2}");
-            
+        {            
             _logTimer = LogInterval;
         }
     }
