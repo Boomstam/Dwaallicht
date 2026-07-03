@@ -51,6 +51,7 @@
     <Compile Include="Assets\Scripts\MapEngine\MVTParser.cs" />
     <Compile Include="Assets\Scripts\MapEngine\MapCameraController.cs" />
     <Compile Include="Assets\Scripts\MapEngine\PMTilesReader.cs" />
+    <Compile Include="Assets\Scripts\UI\MobileAppMockupController.cs" />
     <Compile Include="Assets\Scripts\MapEngine\MapController.cs" />
     <Compile Include="Assets\TutorialInfo\Scripts\Readme.cs" />
     <Compile Include="Assets\Scripts\MapEngine\MapMaterials.cs" />
@@ -526,7 +527,7 @@
       <HintPath>C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Assets\Plugins\NuGet\Microsoft.Extensions.FileProviders.Abstractions.dll</HintPath>
     </Reference>
     <Reference Include="System.Runtime.CompilerServices.Unsafe">
-      <HintPath>C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Library\PackageCache\com.unity.collections@aea9d3bd5e19\Unity.Collections.Tests\System.Runtime.CompilerServices.Unsafe\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+      <HintPath>C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Assets\Plugins\NuGet\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
     </Reference>
     <Reference Include="System.IO.Hashing">
       <HintPath>C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Library\PackageCache\com.unity.collections@aea9d3bd5e19\Unity.Collections.Tests\System.IO.Hashing\System.IO.Hashing.dll</HintPath>
