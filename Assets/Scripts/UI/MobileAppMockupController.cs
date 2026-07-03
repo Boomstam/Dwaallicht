@@ -3,7 +3,6 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-[ExecuteAlways]
 [AddComponentMenu("Dwaallicht/Mobile App Mockup")]
 public sealed class MobileAppMockupController : MonoBehaviour
 {
@@ -28,6 +27,11 @@ public sealed class MobileAppMockupController : MonoBehaviour
 
     private void OnEnable()
     {
+        if (!Application.isPlaying)
+        {
+            return;
+        }
+
         Build();
     }
 
