@@ -1,10 +1,11 @@
 using System.Collections.Generic;
+using Dwaallicht.Navigation;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-[AddComponentMenu("Dwaallicht/Mobile App Mockup")]
-public sealed class MobileAppMockupController : MonoBehaviour
+[AddComponentMenu("Dwaallicht/App Controller")]
+public sealed class DwaallichtAppController : MonoBehaviour
 {
     private static readonly Color AppBackground = Rgb(229, 229, 226);
     private static readonly Color Ink = Rgb(32, 30, 31);
@@ -14,15 +15,30 @@ public sealed class MobileAppMockupController : MonoBehaviour
     private static readonly Color Red = Rgb(222, 22, 32);
     private static readonly Color Gold = Rgb(187, 137, 20);
     private static readonly Color Yellow = Rgb(255, 203, 34);
+    private static readonly Vector2 AppMapCenterLatLon = new Vector2(51.18623f, 4.22974f);
+    private static readonly Vector2 PhoneMapPosition = new Vector2(172f, -306f);
+    private static readonly Vector2 MapDesignSize = new Vector2(342f, 696f);
+    private const float MapMetersToPixels = 0.18f;
 
     private readonly string[] tabIds = { "K", "M", "L", "S" };
     private readonly Dictionary<string, Button> buttons = new Dictionary<string, Button>();
 
     [SerializeField, Range(0, 3)]
     private int activeTab;
+    [SerializeField]
+    private bool showDeviceDebug = true;
+    [SerializeField]
+    private bool showAdminPoiControls = true;
 
     private RectTransform contentRoot;
     private RectTransform tabRoot;
+    private RectTransform compassRose;
+    private RectTransform mapFacingArrow;
+    private Text debugText;
+    private Text navigationText;
+    private Text headingText;
+    private CompassHeadingProvider headingProvider;
+    private PoiManager poiManager;
     private Font font;
 
     private void OnEnable()
@@ -33,6 +49,41 @@ public sealed class MobileAppMockupController : MonoBehaviour
         }
 
         Build();
+    }
+
+    private void Update()
+    {
+        if (!Application.isPlaying)
+        {
+            return;
+        }
+
+        EnsureHeadingProvider();
+        EnsurePoiManager();
+
+        RefreshDynamicText();
+
+        if (headingProvider == null || !headingProvider.IsReady)
+        {
+            return;
+        }
+
+        var heading = headingProvider.Heading;
+        if (compassRose != null)
+        {
+            compassRose.localEulerAngles = new Vector3(0f, 0f, heading);
+        }
+
+        if (mapFacingArrow != null)
+        {
+            mapFacingArrow.localEulerAngles = new Vector3(0f, 0f, -heading);
+        }
+
+        if (headingText != null)
+        {
+            headingText.text = $"{heading:000} graden";
+        }
+
     }
 
     private void Build()
@@ -46,7 +97,7 @@ public sealed class MobileAppMockupController : MonoBehaviour
         ClearChildren(transform);
         EnsureEventSystem();
 
-        var canvasGo = new GameObject("MobileMockupCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        var canvasGo = new GameObject("DwaallichtAppCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         canvasGo.transform.SetParent(transform, false);
 
         var canvas = canvasGo.GetComponent<Canvas>();
@@ -79,6 +130,11 @@ public sealed class MobileAppMockupController : MonoBehaviour
         }
 
         ClearChildren(contentRoot);
+        compassRose = null;
+        mapFacingArrow = null;
+        debugText = null;
+        navigationText = null;
+        headingText = null;
 
         switch (tabIds[activeTab])
         {
@@ -99,7 +155,7 @@ public sealed class MobileAppMockupController : MonoBehaviour
         foreach (var pair in buttons)
         {
             var active = pair.Key == tabIds[activeTab];
-            var circle = pair.Value.targetGraphic as MockupCircleGraphic;
+            var circle = pair.Value.targetGraphic as AppCircleGraphic;
             if (circle != null)
             {
                 circle.color = active ? Ink : Paper;
@@ -112,6 +168,8 @@ public sealed class MobileAppMockupController : MonoBehaviour
                 label.color = active ? Paper : Ink;
             }
         }
+
+        RefreshDynamicText();
     }
 
     private void BuildTabs()
@@ -126,7 +184,7 @@ public sealed class MobileAppMockupController : MonoBehaviour
             var index = i;
             var x = Mathf.Lerp(58f, 332f, i / 3f);
             var holder = AddRect(tabRoot, "Tab_" + tabIds[i], new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(x - 32f, 20f), new Vector2(64f, 64f));
-            var circle = holder.gameObject.AddComponent<MockupCircleGraphic>();
+            var circle = holder.gameObject.AddComponent<AppCircleGraphic>();
             circle.color = Paper;
             circle.fillCenter = true;
             circle.strokeColor = Ink;
@@ -147,23 +205,39 @@ public sealed class MobileAppMockupController : MonoBehaviour
     {
         AddText(parent, "Eigenwijzer", 26, FontStyle.Normal, Ink, TextAnchor.UpperLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(28f, -90f), new Vector2(-28f, -34f));
 
-        var compass = AddRect(parent, "CompassGraphic", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(280f, 360f));
+        var compass = AddRect(parent, "CompassGraphic", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(300f, 300f));
+        AddCircle(compass, "OuterRing", Ink, Vector2.one * 286f, Vector2.zero, true, Ink, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        AddCircle(compass, "InnerPaper", Paper, Vector2.one * 266f, Vector2.zero, true, Paper, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
 
-        AddArrow(compass, "CompassNorth", Green, new Vector2(116f, 220f), new Vector2(48f, 120f), 0f);
-        AddArrow(compass, "CompassSouth", Green, new Vector2(116f, 20f), new Vector2(48f, 120f), 180f);
-        AddArrow(compass, "RedNorthEast", Red, new Vector2(178f, 200f), new Vector2(44f, 98f), 31f);
-        AddArrow(compass, "RedSouthWest", Red, new Vector2(58f, 44f), new Vector2(44f, 96f), 211f);
-        AddArrow(compass, "BlueWest", Blue, new Vector2(-8f, 154f), new Vector2(46f, 92f), 298f);
-        AddArrow(compass, "BlueEast", Blue, new Vector2(220f, 122f), new Vector2(48f, 94f), 118f);
+        compassRose = AddRect(compass, "RotatingCompassRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(260f, 260f));
+        for (var i = 0; i < 24; i++)
+        {
+            var major = i % 6 == 0;
+            var angle = i * 15f;
+            var radians = angle * Mathf.Deg2Rad;
+            var radius = major ? 110f : 114f;
+            var tickPosition = new Vector2(Mathf.Sin(radians) * radius, Mathf.Cos(radians) * radius);
+            var tick = AddImage(compassRose, "Tick_" + i, Ink, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), tickPosition, new Vector2(4f, major ? 26f : 14f));
+            tick.localEulerAngles = new Vector3(0f, 0f, -angle);
+        }
 
-        AddCircle(compass, "OuterRing", Ink, Vector2.one * 140f, new Vector2(70f, 110f), true, Ink, 0f);
-        AddCircle(compass, "InnerRing", Paper, Vector2.one * 112f, new Vector2(84f, 124f), true, Paper, 0f);
-        AddCircle(compass, "GoldCenter", Gold, Vector2.one * 52f, new Vector2(114f, 154f), true, Gold, 0f);
+        AddImage(compassRose, "NorthNeedle", Green, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 48f), new Vector2(12f, 96f));
+        AddImage(compassRose, "SouthNeedle", Red, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -36f), new Vector2(10f, 72f));
+
+        AddText(compassRose, "N", 28, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-24f, 78f), new Vector2(48f, 48f));
+        AddText(compassRose, "O", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(80f, -24f), new Vector2(48f, 48f));
+        AddText(compassRose, "Z", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-24f, -126f), new Vector2(48f, 48f));
+        AddText(compassRose, "W", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-128f, -24f), new Vector2(48f, 48f));
+
+        AddCircle(compass, "GoldCenter", Gold, Vector2.one * 56f, Vector2.zero, true, Gold, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        headingText = AddText(parent, "000 graden", 20, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 84f), new Vector2(0f, 124f));
         AddText(parent, "34 m", 28, FontStyle.Bold, Gold, TextAnchor.MiddleCenter, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 20f), new Vector2(0f, 60f));
+        debugText = AddText(parent, "", 13, FontStyle.Normal, Ink, TextAnchor.LowerLeft, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(28f, 128f), new Vector2(-28f, 210f));
     }
 
     private void BuildMapScreen(RectTransform parent)
     {
+        EnsurePoiManager();
         var map = AddRect(parent, "MapGraphic", Vector2.zero, Vector2.one, new Vector2(24f, 24f), new Vector2(-24f, -20f));
         AddImage(map, "MapFill", AppBackground, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
 
@@ -214,13 +288,33 @@ public sealed class MobileAppMockupController : MonoBehaviour
             new Vector2(1.04f, 0.01f),
         });
 
+        var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
+        if (selectedPoi != null)
+        {
+            var selectedPosition = MapLatLonToAnchoredPosition(selectedPoi.LatLon);
+            AddPolyline(map, "RouteToSelectedPoi", Ink, 4f, new[]
+            {
+                ToMapNormalized(PhoneMapPosition),
+                ToMapNormalized(selectedPosition),
+            });
+        }
+
         AddTreeCluster(map);
         AddFactory(map);
-        AddPin(map, Blue, new Vector2(132f, -112f), 28f);
-        AddPin(map, Red, new Vector2(236f, -166f), 30f);
-        AddPin(map, Yellow, new Vector2(112f, -326f), 30f);
-        AddPin(map, Green, new Vector2(152f, -504f), 32f);
+        AddMapPois(map);
+        AddCircle(map, "PhonePosition", Paper, Vector2.one * 42f, new Vector2(172f, -306f), true, Ink, 3f, new Vector2(0f, 1f), new Vector2(0f, 1f));
+        mapFacingArrow = AddArrow(map, "PhoneFacingDirection", Ink, new Vector2(176f, -278f), new Vector2(34f, 88f), 0f);
         AddText(map, "you are here", 24, FontStyle.Normal, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-58f, 110f), new Vector2(190f, 50f));
+        navigationText = AddText(map, "", 15, FontStyle.Bold, Ink, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(10f, 10f), new Vector2(-10f, -600f));
+        if (showDeviceDebug)
+        {
+            debugText = AddText(map, "", 12, FontStyle.Normal, Ink, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(10f, 54f), new Vector2(-10f, -548f));
+        }
+
+        if (showAdminPoiControls)
+        {
+            AddCommandButton(map, "POI +", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-82f, -54f), new Vector2(72f, 34f), AddPoiAhead);
+        }
     }
 
     private void BuildLegendScreen(RectTransform parent)
@@ -316,11 +410,11 @@ public sealed class MobileAppMockupController : MonoBehaviour
     private RectTransform AddPin(RectTransform parent, Color color, Vector2 anchoredPosition, float size, Vector2 anchorMin, Vector2 anchorMax)
     {
         var pin = AddRect(parent, "Pin", anchorMin, anchorMax, anchoredPosition, new Vector2(size, size * 1.35f));
-        var border = pin.gameObject.AddComponent<MockupPinGraphic>();
+        var border = pin.gameObject.AddComponent<AppPinGraphic>();
         border.color = Ink;
 
         var fill = AddRect(pin, "PinFill", Vector2.zero, Vector2.one, new Vector2(size * 0.09f, size * 0.12f), new Vector2(-size * 0.18f, -size * 0.22f));
-        var fillGraphic = fill.gameObject.AddComponent<MockupPinGraphic>();
+        var fillGraphic = fill.gameObject.AddComponent<AppPinGraphic>();
         fillGraphic.color = color;
         return pin;
     }
@@ -328,7 +422,7 @@ public sealed class MobileAppMockupController : MonoBehaviour
     private RectTransform AddArrow(RectTransform parent, string name, Color color, Vector2 anchoredPosition, Vector2 size, float rotation)
     {
         var arrow = AddRect(parent, name, Vector2.zero, Vector2.zero, anchoredPosition, size);
-        var graphic = arrow.gameObject.AddComponent<MockupArrowGraphic>();
+        var graphic = arrow.gameObject.AddComponent<AppArrowGraphic>();
         graphic.color = color;
         arrow.localEulerAngles = new Vector3(0f, 0f, rotation);
         return arrow;
@@ -342,7 +436,7 @@ public sealed class MobileAppMockupController : MonoBehaviour
     private RectTransform AddCircle(RectTransform parent, string name, Color color, Vector2 size, Vector2 anchoredPosition, bool fillCenter, Color strokeColor, float strokeWidth, Vector2 anchorMin, Vector2 anchorMax)
     {
         var rect = AddRect(parent, name, anchorMin, anchorMax, anchoredPosition, size);
-        var circle = rect.gameObject.AddComponent<MockupCircleGraphic>();
+        var circle = rect.gameObject.AddComponent<AppCircleGraphic>();
         circle.color = color;
         circle.fillCenter = fillCenter;
         circle.strokeColor = strokeColor;
@@ -353,7 +447,7 @@ public sealed class MobileAppMockupController : MonoBehaviour
     private RectTransform AddPolyline(RectTransform parent, string name, Color color, float thickness, Vector2[] points)
     {
         var rect = AddRect(parent, name, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-        var line = rect.gameObject.AddComponent<MockupPolylineGraphic>();
+        var line = rect.gameObject.AddComponent<AppPolylineGraphic>();
         line.color = color;
         line.thickness = thickness;
         line.SetPoints(points);
@@ -374,6 +468,21 @@ public sealed class MobileAppMockupController : MonoBehaviour
         text.verticalOverflow = VerticalWrapMode.Overflow;
         text.raycastTarget = false;
         return text;
+    }
+
+    private Button AddCommandButton(RectTransform parent, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax, UnityEngine.Events.UnityAction action)
+    {
+        var rect = AddImage(parent, "Button_" + label, Paper, anchorMin, anchorMax, offsetMin, offsetMax);
+        var outline = rect.gameObject.AddComponent<Outline>();
+        outline.effectColor = Ink;
+        outline.effectDistance = new Vector2(2f, -2f);
+
+        var button = rect.gameObject.AddComponent<Button>();
+        button.targetGraphic = rect.GetComponent<Image>();
+        button.onClick.AddListener(action);
+
+        AddText(rect, label, 15, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        return button;
     }
 
     private RectTransform AddImage(RectTransform parent, string name, Color color, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
@@ -439,6 +548,7 @@ public sealed class MobileAppMockupController : MonoBehaviour
             var child = parent.GetChild(i).gameObject;
             if (Application.isPlaying)
             {
+                child.SetActive(false);
                 Destroy(child);
             }
             else
@@ -452,10 +562,161 @@ public sealed class MobileAppMockupController : MonoBehaviour
     {
         return new Color(r / 255f, g / 255f, b / 255f, 1f);
     }
+
+    private void EnsureHeadingProvider()
+    {
+        if (headingProvider != null)
+        {
+            return;
+        }
+
+        headingProvider = FindFirstObjectByType<CompassHeadingProvider>();
+        if (headingProvider == null)
+        {
+            var provider = new GameObject("Compass Heading Provider");
+            headingProvider = provider.AddComponent<CompassHeadingProvider>();
+        }
+    }
+
+    private void EnsurePoiManager()
+    {
+        if (poiManager != null)
+        {
+            return;
+        }
+
+        poiManager = FindFirstObjectByType<PoiManager>();
+        if (poiManager == null)
+        {
+            var provider = new GameObject("POI Manager");
+            poiManager = provider.AddComponent<PoiManager>();
+        }
+
+        if (poiManager.SelectedPoi == null && poiManager.Pois.Count > 0)
+        {
+            poiManager.SelectPoi(poiManager.Pois[0]);
+        }
+    }
+
+    private void RefreshDynamicText()
+    {
+        if (debugText != null)
+        {
+            debugText.text = BuildDebugText();
+        }
+
+        if (navigationText != null)
+        {
+            navigationText.text = BuildNavigationText();
+        }
+    }
+
+    private void AddMapPois(RectTransform map)
+    {
+        if (poiManager == null)
+        {
+            return;
+        }
+
+        foreach (var poi in poiManager.Pois)
+        {
+            if (!poi.active)
+            {
+                continue;
+            }
+
+            var isSelected = poiManager.SelectedPoi == poi;
+            var position = MapLatLonToAnchoredPosition(poi.LatLon);
+            var pin = AddPin(map, poi.color, position, isSelected ? 38f : 30f);
+            var button = pin.gameObject.AddComponent<Button>();
+            button.targetGraphic = pin.GetComponent<Graphic>();
+            button.onClick.AddListener(() =>
+            {
+                poiManager.SelectPoi(poi);
+                ShowTab(activeTab);
+            });
+        }
+    }
+
+    private string BuildNavigationText()
+    {
+        EnsurePoiManager();
+        if (headingProvider == null || poiManager == null || poiManager.SelectedPoi == null)
+        {
+            return "Geen POI geselecteerd";
+        }
+
+        var poi = poiManager.SelectedPoi;
+        var bearing = GeoMath.BearingTo(headingProvider.CurrentLatLon, poi.LatLon);
+        var turn = GeoMath.SignedDeltaDegrees(headingProvider.Heading, bearing);
+        var distance = GeoMath.DistanceMeters(headingProvider.CurrentLatLon, poi.LatLon);
+        return $"{poi.title}  {distance:0} m  {turn:+0;-0;0} graden";
+    }
+
+    private string BuildDebugText()
+    {
+        if (!showDeviceDebug)
+        {
+            return "";
+        }
+
+        if (headingProvider == null)
+        {
+            return "Debug: geen heading provider";
+        }
+
+        var latLon = headingProvider.CurrentLatLon;
+        var mode = headingProvider.IsSimulated ? "sim" : "device";
+        var selected = poiManager != null && poiManager.SelectedPoi != null ? poiManager.SelectedPoi.title : "-";
+        return $"Debug {mode}: {headingProvider.Status}\n" +
+               $"raw {headingProvider.RawHeading:0.0}  smooth {headingProvider.Heading:0.0}  acc {headingProvider.HeadingAccuracy:0.0}\n" +
+               $"lat {latLon.x:0.000000}  lon {latLon.y:0.000000}  poi {selected}";
+    }
+
+    private void AddPoiAhead()
+    {
+        EnsureHeadingProvider();
+        EnsurePoiManager();
+        if (headingProvider == null || poiManager == null)
+        {
+            return;
+        }
+
+        var latLon = ProjectLatLon(headingProvider.CurrentLatLon, headingProvider.Heading, 80f);
+        poiManager.AddPoi("Device testpunt", latLon, "Event", "Aangemaakt vanuit de app-debugknop.");
+        ShowTab(activeTab);
+    }
+
+    private static Vector2 ProjectLatLon(Vector2 latLon, float bearingDegrees, float meters)
+    {
+        const float metersPerDegreeLatitude = 111320f;
+        var bearing = bearingDegrees * Mathf.Deg2Rad;
+        var northMeters = Mathf.Cos(bearing) * meters;
+        var eastMeters = Mathf.Sin(bearing) * meters;
+        var latitude = latLon.x + northMeters / metersPerDegreeLatitude;
+        var longitudeScale = Mathf.Cos(latitude * Mathf.Deg2Rad) * metersPerDegreeLatitude;
+        var longitude = latLon.y + eastMeters / Mathf.Max(1f, longitudeScale);
+        return new Vector2(latitude, longitude);
+    }
+
+    private static Vector2 MapLatLonToAnchoredPosition(Vector2 latLon)
+    {
+        const float metersPerDegreeLatitude = 111320f;
+        var northMeters = (latLon.x - AppMapCenterLatLon.x) * metersPerDegreeLatitude;
+        var eastMeters = (latLon.y - AppMapCenterLatLon.y) * Mathf.Cos(AppMapCenterLatLon.x * Mathf.Deg2Rad) * metersPerDegreeLatitude;
+        return new Vector2(PhoneMapPosition.x + eastMeters * MapMetersToPixels, PhoneMapPosition.y - northMeters * MapMetersToPixels);
+    }
+
+    private static Vector2 ToMapNormalized(Vector2 anchoredFromTopLeft)
+    {
+        return new Vector2(
+            Mathf.Clamp01(anchoredFromTopLeft.x / MapDesignSize.x),
+            Mathf.Clamp01((MapDesignSize.y + anchoredFromTopLeft.y) / MapDesignSize.y));
+    }
 }
 
 [RequireComponent(typeof(CanvasRenderer))]
-public sealed class MockupCircleGraphic : MaskableGraphic
+public sealed class AppCircleGraphic : MaskableGraphic
 {
     public bool fillCenter = true;
     public Color strokeColor = Color.black;
@@ -515,7 +776,7 @@ public sealed class MockupCircleGraphic : MaskableGraphic
 }
 
 [RequireComponent(typeof(CanvasRenderer))]
-public sealed class MockupArrowGraphic : MaskableGraphic
+public sealed class AppArrowGraphic : MaskableGraphic
 {
     protected override void OnPopulateMesh(VertexHelper vh)
     {
@@ -547,7 +808,7 @@ public sealed class MockupArrowGraphic : MaskableGraphic
 }
 
 [RequireComponent(typeof(CanvasRenderer))]
-public sealed class MockupPinGraphic : MaskableGraphic
+public sealed class AppPinGraphic : MaskableGraphic
 {
     protected override void OnPopulateMesh(VertexHelper vh)
     {
@@ -582,7 +843,7 @@ public sealed class MockupPinGraphic : MaskableGraphic
 }
 
 [RequireComponent(typeof(CanvasRenderer))]
-public sealed class MockupPolylineGraphic : MaskableGraphic
+public sealed class AppPolylineGraphic : MaskableGraphic
 {
     public float thickness = 2f;
     [SerializeField]

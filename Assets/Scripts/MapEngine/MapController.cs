@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Dwaallicht.Navigation;
 
 public class MapController : MonoBehaviour
 {
@@ -25,6 +26,35 @@ public class MapController : MonoBehaviour
     [HideInInspector] public bool    isLoaded = false;
 
     private bool _lastShowLabels = true;
+    private MapNavigationOverlay _navigationOverlay;
+
+    public int MapZoomLevel => ZOOM;
+
+    public Vector3 GeoToWorldPosition(Vector2 latLon, float height = 0f)
+    {
+        double tileX = GeoMath.LongitudeToTileX(latLon.y, ZOOM);
+        double tileY = GeoMath.LatitudeToTileY(latLon.x, ZOOM);
+
+        float worldX = mapWidth - (float)((tileX - MIN_X) * tileWorldSize);
+        float worldZ = (float)((tileY - MIN_Y) * tileWorldSize);
+        return new Vector3(worldX, height, worldZ);
+    }
+
+    public bool TryWorldToGeo(Vector3 worldPosition, out Vector2 latLon)
+    {
+        if (!isLoaded || tileWorldSize <= 0f)
+        {
+            latLon = default;
+            return false;
+        }
+
+        double tileX = MIN_X + (mapWidth - worldPosition.x) / tileWorldSize;
+        double tileY = MIN_Y + worldPosition.z / tileWorldSize;
+        latLon = new Vector2(
+            (float)GeoMath.TileYToLatitude(tileY, ZOOM),
+            (float)GeoMath.TileXToLongitude(tileX, ZOOM));
+        return true;
+    }
 
     void Update()
     {
@@ -34,6 +64,14 @@ public class MapController : MonoBehaviour
             _lastShowLabels = showLabels;
             foreach (var tr in mapRoot.GetComponentsInChildren<TileRenderer>())
                 tr.showLabels = showLabels;
+        }
+
+        if (isLoaded)
+        {
+            _navigationOverlay = _navigationOverlay != null
+                ? _navigationOverlay
+                : FindFirstObjectByType<MapNavigationOverlay>();
+            _navigationOverlay?.RefreshRuntimeOverlay();
         }
     }
 
@@ -125,6 +163,8 @@ public class MapController : MonoBehaviour
         mapHeight = worldMaxZ - worldMinZ;
         mapCenter = new Vector3(worldMinX + mapWidth * 0.5f, 0, worldMinZ + mapHeight * 0.5f);
         isLoaded  = true;
+        _navigationOverlay = FindFirstObjectByType<MapNavigationOverlay>();
+        _navigationOverlay?.RefreshRuntimeOverlay();
 
         Debug.Log($"[Coords] worldX range [{worldMinX:F0} → {worldMaxX:F0}]  worldZ range [{worldMinZ:F0} → {worldMaxZ:F0}]");
         Debug.Log($"[Coords] mapCenter={mapCenter}  tileX range [{minTileX}→{maxTileX}]  tileY range [{minTileY}→{maxTileY}]");
