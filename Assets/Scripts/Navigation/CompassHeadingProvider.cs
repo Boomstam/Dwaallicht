@@ -1,6 +1,10 @@
 using System.Collections;
 using UnityEngine;
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
+
 namespace Dwaallicht.Navigation
 {
     [AddComponentMenu("Dwaallicht/Navigation/Compass Heading Provider")]
@@ -30,6 +34,11 @@ namespace Dwaallicht.Navigation
         private float smoothedHeading;
         private float headingVelocity;
         private bool deviceStartupAttempted;
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private bool? androidLocationPermissionGranted;
+        private PermissionCallbacks androidLocationPermissionCallbacks;
+#endif
 
         public bool IsReady { get; private set; }
         public bool IsSimulated => ResolveSource() == HeadingSource.Simulated;
@@ -117,6 +126,17 @@ namespace Dwaallicht.Navigation
             deviceStartupAttempted = true;
             Status = "Starting location and compass";
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+            yield return RequestAndroidLocationPermission();
+
+            if (!Permission.HasUserAuthorizedPermission(Permission.FineLocation))
+            {
+                IsReady = false;
+                Status = "Location permission denied";
+                yield break;
+            }
+#endif
+
             if (!Input.location.isEnabledByUser)
             {
                 IsReady = false;
@@ -144,6 +164,30 @@ namespace Dwaallicht.Navigation
             IsReady = true;
             Status = "Device compass ready";
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private IEnumerator RequestAndroidLocationPermission()
+        {
+            if (Permission.HasUserAuthorizedPermission(Permission.FineLocation))
+            {
+                yield break;
+            }
+
+            androidLocationPermissionGranted = null;
+            androidLocationPermissionCallbacks = new PermissionCallbacks();
+            androidLocationPermissionCallbacks.PermissionGranted += _ => androidLocationPermissionGranted = true;
+            androidLocationPermissionCallbacks.PermissionDenied += _ => androidLocationPermissionGranted = false;
+            androidLocationPermissionCallbacks.PermissionDeniedAndDontAskAgain += _ => androidLocationPermissionGranted = false;
+
+            Status = "Requesting location permission";
+            Permission.RequestUserPermission(Permission.FineLocation, androidLocationPermissionCallbacks);
+
+            while (!androidLocationPermissionGranted.HasValue)
+            {
+                yield return null;
+            }
+        }
+#endif
 
         private void UpdateDeviceHeading()
         {
