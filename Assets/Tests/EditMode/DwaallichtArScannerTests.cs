@@ -3,16 +3,16 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
-public sealed class KrefelArScannerTests
+public sealed class DwaallichtArScannerTests
 {
-    private static Type ScannerType => Type.GetType("Dwaallicht.AR.DwaallichtKrefelArScanner, Assembly-CSharp", true);
+    private static Type ScannerType => Type.GetType("Dwaallicht.AR.DwaallichtArScanner, Assembly-CSharp", true);
 
     [Test]
-    public void KrefelReferenceDimensionsMatchDeskPaper()
+    public void ReferenceDimensionsMatchPrintedQrImage()
     {
-        Assert.That(GetConstant<string>("KrefelReferenceImageName"), Is.EqualTo("Krefel aankoop"));
-        Assert.That(GetConstant<float>("KrefelImageWidthMeters"), Is.EqualTo(0.10f).Within(0.0001f));
-        Assert.That(GetConstant<float>("KrefelImageHeightMeters"), Is.EqualTo(0.15f).Within(0.0001f));
+        Assert.That(GetConstant<string>("ReferenceImageName"), Is.EqualTo("Dwaallicht QR"));
+        Assert.That(GetConstant<float>("ReferenceImageWidthMeters"), Is.EqualTo(0.078f).Within(0.0001f));
+        Assert.That(GetConstant<float>("ReferenceImageHeightMeters"), Is.EqualTo(0.078f).Within(0.0001f));
     }
 
     [Test]
@@ -31,7 +31,7 @@ public sealed class KrefelArScannerTests
             var scanner = root.AddComponent(ScannerType);
             InvokeSetScanningActive(scanner, true);
 
-            var cube = GameObject.Find("Krefel Recognition Cube");
+            var cube = GameObject.Find("Dwaallicht Recognition Cube");
             Assert.NotNull(cube);
             Assert.That(GetProperty<bool>(scanner, "IsScanningActive"), Is.True);
             Assert.That(GetProperty<bool>(scanner, "HasVisibleCube"), Is.True);
@@ -44,7 +44,7 @@ public sealed class KrefelArScannerTests
         finally
         {
             UnityEngine.Object.DestroyImmediate(root);
-            var cube = GameObject.Find("Krefel Recognition Cube");
+            var cube = GameObject.Find("Dwaallicht Recognition Cube");
             if (cube != null)
             {
                 UnityEngine.Object.DestroyImmediate(cube);

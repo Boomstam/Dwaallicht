@@ -6,12 +6,12 @@ using UnityEngine.XR.ARSubsystems;
 
 namespace Dwaallicht.AR
 {
-    [AddComponentMenu("Dwaallicht/AR/Krefel AR Scanner")]
-    public sealed class DwaallichtKrefelArScanner : MonoBehaviour
+    [AddComponentMenu("Dwaallicht/AR/AR Scanner")]
+    public sealed class DwaallichtArScanner : MonoBehaviour
     {
-        public const string KrefelReferenceImageName = "Krefel aankoop";
-        public const float KrefelImageWidthMeters = 0.10f;
-        public const float KrefelImageHeightMeters = 0.15f;
+        public const string ReferenceImageName = "Dwaallicht QR";
+        public const float ReferenceImageWidthMeters = 0.078f;
+        public const float ReferenceImageHeightMeters = 0.078f;
         public const float CubeSizeMeters = 0.05f;
         public const float CubeCenterHeightMeters = 0.05f;
 
@@ -161,7 +161,7 @@ namespace Dwaallicht.AR
 
             for (var i = 0; i < args.removed.Count; i++)
             {
-                if (args.removed[i].Value.referenceImage.name == KrefelReferenceImageName)
+                if (args.removed[i].Value.referenceImage.name == ReferenceImageName)
                 {
                     HideCube();
                 }
@@ -170,7 +170,7 @@ namespace Dwaallicht.AR
 
         private void HandleTrackedImage(ARTrackedImage trackedImage)
         {
-            if (trackedImage == null || trackedImage.referenceImage.name != KrefelReferenceImageName)
+            if (trackedImage == null || trackedImage.referenceImage.name != ReferenceImageName)
             {
                 return;
             }
@@ -206,11 +206,11 @@ namespace Dwaallicht.AR
             }
 
             simulatedImage = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            simulatedImage.name = "Simulated Krefel aankoop Image";
+            simulatedImage.name = "Simulated Dwaallicht QR Image";
             simulatedImage.transform.SetParent(transform, false);
             simulatedImage.transform.localPosition = new Vector3(0f, 0f, 0.65f);
             simulatedImage.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            simulatedImage.transform.localScale = new Vector3(KrefelImageWidthMeters, KrefelImageHeightMeters, 1f);
+            simulatedImage.transform.localScale = new Vector3(ReferenceImageWidthMeters, ReferenceImageHeightMeters, 1f);
 
             var renderer = simulatedImage.GetComponent<MeshRenderer>();
             renderer.sharedMaterial = CreateRuntimeMaterial(new Color(0.92f, 0.92f, 0.88f, 1f));
@@ -223,7 +223,7 @@ namespace Dwaallicht.AR
                 return;
             }
 
-            DestroyObject(simulatedImage);
+            DestroyUnityObject(simulatedImage);
             simulatedImage = null;
         }
 
@@ -235,7 +235,7 @@ namespace Dwaallicht.AR
             }
 
             cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cube.name = "Krefel Recognition Cube";
+            cube.name = "Dwaallicht Recognition Cube";
             var renderer = cube.GetComponent<MeshRenderer>();
             renderer.sharedMaterial = CreateRuntimeMaterial(new Color(0.13f, 0.7f, 0.95f, 1f));
             cube.SetActive(false);
@@ -259,7 +259,7 @@ namespace Dwaallicht.AR
             return material;
         }
 
-        private static void DestroyObject(Object target)
+        private static void DestroyUnityObject(Object target)
         {
             if (target == null)
             {

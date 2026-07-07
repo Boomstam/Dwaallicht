@@ -55,11 +55,11 @@
     <Compile Include="Assets\Scripts\MapEngine\MVTParser.cs" />
     <Compile Include="Assets\Scripts\MapEngine\MapCameraController.cs" />
     <Compile Include="Assets\Scripts\MapEngine\PMTilesReader.cs" />
-    <Compile Include="Assets\Scripts\AR\DwaallichtKrefelArScanner.cs" />
     <Compile Include="Assets\Scripts\MapEngine\MapController.cs" />
     <Compile Include="Assets\Scripts\Navigation\MapNavigationOverlay.cs" />
     <Compile Include="Assets\Scripts\Navigation\PointOfInterest.cs" />
     <Compile Include="Assets\TutorialInfo\Scripts\Readme.cs" />
+    <Compile Include="Assets\Scripts\AR\DwaallichtArScanner.cs" />
     <Compile Include="Assets\Scripts\Navigation\GeoMath.cs" />
     <Compile Include="Assets\Scripts\Input\DwaallichtInput.cs" />
     <Compile Include="Assets\Scripts\MapEngine\MapMaterials.cs" />

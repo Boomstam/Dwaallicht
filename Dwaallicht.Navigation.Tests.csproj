@@ -47,7 +47,7 @@
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\6000.3.10f1\Editor\Data\Tools\BuildPipeline\Unity.SourceGenerators\Unity.UIToolkit.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets\Tests\EditMode\KrefelArScannerTests.cs" />
+    <Compile Include="Assets\Tests\EditMode\DwaallichtArScannerTests.cs" />
     <Compile Include="Assets\Tests\EditMode\NavigationMathTests.cs" />
     <None Include="Assets\Tests\EditMode\Dwaallicht.Navigation.Tests.asmdef" />
     <Reference Include="UnityEngine">
@@ -860,11 +860,11 @@
     <Reference Include="UnityEditor.TestRunner">
       <HintPath>C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Library\ScriptAssemblies\UnityEditor.TestRunner.dll</HintPath>
     </Reference>
-    <Reference Include="UnityEngine.UI">
-      <HintPath>C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Library\ScriptAssemblies\UnityEngine.UI.dll</HintPath>
-    </Reference>
     <Reference Include="UnityEditor.UI">
       <HintPath>C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Library\ScriptAssemblies\UnityEditor.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Library\ScriptAssemblies\UnityEngine.UI.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>

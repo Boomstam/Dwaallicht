@@ -663,7 +663,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6d1aad24077443f4d9269ad68ad29b38, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Dwaallicht.AR.DwaallichtKrefelArScanner
+  m_EditorClassIdentifier: Assembly-CSharp::Dwaallicht.AR.DwaallichtArScanner
   xrOrigin: {fileID: 564983915}
   arSession: {fileID: 1716780786}
   trackedImageManager: {fileID: 564983914}

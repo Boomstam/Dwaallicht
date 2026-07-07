@@ -40,7 +40,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Text debugText;
     private Text navigationText;
     private Text headingText;
-    private DwaallichtKrefelArScanner arScanner;
+    private DwaallichtArScanner arScanner;
     private CompassHeadingProvider headingProvider;
     private PoiManager poiManager;
     private Font font;
@@ -637,7 +637,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return;
         }
 
-        arScanner = FindFirstObjectByType<DwaallichtKrefelArScanner>(FindObjectsInactive.Include);
+        arScanner = FindFirstObjectByType<DwaallichtArScanner>(FindObjectsInactive.Include);
     }
 
     private void RefreshDynamicText()

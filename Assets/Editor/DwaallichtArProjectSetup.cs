@@ -18,16 +18,16 @@ using UnityEngine.XR.Management;
 public static class DwaallichtArProjectSetup
 {
     private const string MainScenePath = "Assets/Scenes/Main.unity";
-    private const string KrefelImagePath = "Assets/Docs/Krefel aankoop.jpeg";
+    private const string ReferenceImagePath = "Assets/Docs/QRCode.jpg";
     private const string ArFolder = "Assets/AR";
-    private const string ReferenceLibraryPath = ArFolder + "/KrefelReferenceImageLibrary.asset";
+    private const string ReferenceLibraryPath = ArFolder + "/DwaallichtReferenceImageLibrary.asset";
     private static readonly string[] RendererDataPaths =
     {
         "Assets/Settings/Mobile_Renderer.asset",
         "Assets/Settings/PC_Renderer.asset",
     };
 
-    [MenuItem("Dwaallicht/AR/Setup Krefel Image Tracking")]
+    [MenuItem("Dwaallicht/AR/Setup Image Tracking")]
     public static void Setup()
     {
         EnsureFolders();
@@ -38,7 +38,7 @@ public static class DwaallichtArProjectSetup
         ConfigureMainScene(library);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-        Debug.Log("Dwaallicht AR setup: Krefel image tracking configured.");
+        Debug.Log("Dwaallicht AR setup: image tracking configured.");
     }
 
     private static void EnsureFolders()
@@ -51,10 +51,10 @@ public static class DwaallichtArProjectSetup
 
     private static void ConfigureTextureImporter()
     {
-        var importer = AssetImporter.GetAtPath(KrefelImagePath) as TextureImporter;
+        var importer = AssetImporter.GetAtPath(ReferenceImagePath) as TextureImporter;
         if (importer == null)
         {
-            throw new MissingReferenceException("Could not find Krefel image at " + KrefelImagePath);
+            throw new MissingReferenceException("Could not find reference image at " + ReferenceImagePath);
         }
 
         importer.textureType = TextureImporterType.Default;
@@ -66,10 +66,10 @@ public static class DwaallichtArProjectSetup
 
     private static XRReferenceImageLibrary CreateOrUpdateReferenceImageLibrary()
     {
-        var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(KrefelImagePath);
+        var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(ReferenceImagePath);
         if (texture == null)
         {
-            throw new MissingReferenceException("Could not load Krefel texture at " + KrefelImagePath);
+            throw new MissingReferenceException("Could not load reference texture at " + ReferenceImagePath);
         }
 
         var library = AssetDatabase.LoadAssetAtPath<XRReferenceImageLibrary>(ReferenceLibraryPath);
@@ -82,7 +82,7 @@ public static class DwaallichtArProjectSetup
         var imageIndex = -1;
         for (var i = 0; i < library.count; i++)
         {
-            if (library[i].name == DwaallichtKrefelArScanner.KrefelReferenceImageName)
+            if (library[i].name == DwaallichtArScanner.ReferenceImageName)
             {
                 imageIndex = i;
                 break;
@@ -95,12 +95,12 @@ public static class DwaallichtArProjectSetup
             imageIndex = library.count - 1;
         }
 
-        library.SetName(imageIndex, DwaallichtKrefelArScanner.KrefelReferenceImageName);
+        library.SetName(imageIndex, DwaallichtArScanner.ReferenceImageName);
         library.SetTexture(imageIndex, texture, true);
         library.SetSpecifySize(imageIndex, true);
         library.SetSize(imageIndex, new Vector2(
-            DwaallichtKrefelArScanner.KrefelImageWidthMeters,
-            DwaallichtKrefelArScanner.KrefelImageHeightMeters));
+            DwaallichtArScanner.ReferenceImageWidthMeters,
+            DwaallichtArScanner.ReferenceImageHeightMeters));
 
         EditorUtility.SetDirty(library);
         return library;
@@ -155,10 +155,10 @@ public static class DwaallichtArProjectSetup
         var scene = EditorSceneManager.OpenScene(MainScenePath, OpenSceneMode.Single);
 
         var scannerGo = EnsureSceneObject("Dwaallicht AR Scanner", null);
-        var scanner = scannerGo.GetComponent<DwaallichtKrefelArScanner>();
+        var scanner = scannerGo.GetComponent<DwaallichtArScanner>();
         if (scanner == null)
         {
-            scanner = scannerGo.AddComponent<DwaallichtKrefelArScanner>();
+            scanner = scannerGo.AddComponent<DwaallichtArScanner>();
         }
 
         var sessionGo = EnsureSceneObject("AR Session", scannerGo.transform);
@@ -311,7 +311,7 @@ public static class DwaallichtArProjectSetup
     }
 
     private static void AssignScannerReferences(
-        DwaallichtKrefelArScanner scanner,
+        DwaallichtArScanner scanner,
         XROrigin origin,
         ARSession session,
         ARTrackedImageManager imageManager,
