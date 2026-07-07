@@ -1,7 +1,9 @@
 using System.Collections.Generic;
+using Dwaallicht.AR;
 using Dwaallicht.Navigation;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 [AddComponentMenu("Dwaallicht/App Controller")]
@@ -34,9 +36,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private RectTransform tabRoot;
     private RectTransform compassRose;
     private RectTransform mapFacingArrow;
+    private Image appBackgroundImage;
     private Text debugText;
     private Text navigationText;
     private Text headingText;
+    private DwaallichtKrefelArScanner arScanner;
     private CompassHeadingProvider headingProvider;
     private PoiManager poiManager;
     private Font font;
@@ -112,7 +116,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         var root = canvasGo.GetComponent<RectTransform>();
         Stretch(root, Vector2.zero, Vector2.zero);
-        AddImage(root, "Background", AppBackground, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        appBackgroundImage = AddImage(root, "Background", AppBackground, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero).GetComponent<Image>();
 
         contentRoot = AddRect(root, "ScreenContent", new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0f, 104f), new Vector2(0f, 0f));
         tabRoot = AddRect(root, "PermanentTabs", new Vector2(0f, 0f), new Vector2(1f, 0f), Vector2.zero, new Vector2(0f, 104f));
@@ -150,6 +154,18 @@ public sealed class DwaallichtAppController : MonoBehaviour
             default:
                 BuildScopeScreen(contentRoot);
                 break;
+        }
+
+        var scanActive = tabIds[activeTab] == "S";
+        if (appBackgroundImage != null)
+        {
+            appBackgroundImage.color = scanActive ? Color.clear : AppBackground;
+        }
+
+        EnsureArScanner();
+        if (arScanner != null)
+        {
+            arScanner.SetScanningActive(scanActive);
         }
 
         foreach (var pair in buttons)
@@ -330,9 +346,24 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void BuildScopeScreen(RectTransform parent)
     {
-        AddCircle(parent, "ScopeOuter", Ink, new Vector2(292f, 430f), new Vector2(0f, -58f), true, Ink, 0f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-        AddCircle(parent, "ScopeInner", Paper, new Vector2(280f, 418f), new Vector2(0f, -64f), true, Paper, 0f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-        AddText(parent, "play/scan", 26, FontStyle.Normal, Ink, TextAnchor.MiddleCenter, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 120f), new Vector2(0f, 172f));
+        AddCircle(parent, "ScopeOuter", Color.clear, new Vector2(292f, 430f), new Vector2(0f, -58f), false, Ink, 4f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+        AddCircle(parent, "ScopeInner", Color.clear, new Vector2(260f, 386f), new Vector2(0f, -80f), false, Paper, 2f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+        AddPolyline(parent, "ScanReticleHorizontal", Paper, 3f, new[]
+        {
+            new Vector2(0.32f, 0.50f),
+            new Vector2(0.68f, 0.50f),
+        });
+        AddPolyline(parent, "ScanReticleVertical", Paper, 3f, new[]
+        {
+            new Vector2(0.50f, 0.34f),
+            new Vector2(0.50f, 0.66f),
+        });
+        AddText(parent, "play/scan", 26, FontStyle.Normal, Paper, TextAnchor.MiddleCenter, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 120f), new Vector2(0f, 172f));
+
+        if (showDeviceDebug)
+        {
+            debugText = AddText(parent, "", 12, FontStyle.Normal, Paper, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(28f, 24f), new Vector2(-28f, -520f));
+        }
     }
 
     private void AddTreeCluster(RectTransform parent)
@@ -532,7 +563,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return;
         }
 
-        var eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        var eventSystem = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+        eventSystem.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
 #if UNITY_EDITOR
         if (!Application.isPlaying)
         {
@@ -598,6 +630,16 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
     }
 
+    private void EnsureArScanner()
+    {
+        if (arScanner != null)
+        {
+            return;
+        }
+
+        arScanner = FindFirstObjectByType<DwaallichtKrefelArScanner>(FindObjectsInactive.Include);
+    }
+
     private void RefreshDynamicText()
     {
         if (debugText != null)
@@ -643,14 +685,24 @@ public sealed class DwaallichtAppController : MonoBehaviour
         EnsurePoiManager();
         if (headingProvider == null || poiManager == null || poiManager.SelectedPoi == null)
         {
-            return "Geen POI geselecteerd";
+            return AddCompassWarning("Geen POI geselecteerd");
         }
 
         var poi = poiManager.SelectedPoi;
         var bearing = GeoMath.BearingTo(headingProvider.CurrentLatLon, poi.LatLon);
         var turn = GeoMath.SignedDeltaDegrees(headingProvider.Heading, bearing);
         var distance = GeoMath.DistanceMeters(headingProvider.CurrentLatLon, poi.LatLon);
-        return $"{poi.title}  {distance:0} m  {turn:+0;-0;0} graden";
+        return AddCompassWarning($"{poi.title}  {distance:0} m  {turn:+0;-0;0} graden");
+    }
+
+    private string AddCompassWarning(string text)
+    {
+        if (headingProvider == null || !headingProvider.CompassMayBeUnreliable)
+        {
+            return text;
+        }
+
+        return text + "\nKompas werkt mogelijk niet op deze telefoon";
     }
 
     private string BuildDebugText()
@@ -658,6 +710,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (!showDeviceDebug)
         {
             return "";
+        }
+
+        if (tabIds[activeTab] == "S")
+        {
+            return BuildArScannerDebugText();
         }
 
         if (headingProvider == null)
@@ -671,6 +728,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return $"Debug {mode}: {headingProvider.Status}\n" +
                $"raw {headingProvider.RawHeading:0.0}  smooth {headingProvider.Heading:0.0}  acc {headingProvider.HeadingAccuracy:0.0}\n" +
                $"lat {latLon.x:0.000000}  lon {latLon.y:0.000000}  poi {selected}";
+    }
+
+    private string BuildArScannerDebugText()
+    {
+        EnsureArScanner();
+        return arScanner != null ? arScanner.DebugStatus : "AR scanner missing";
     }
 
     private void AddPoiAhead()

@@ -1,3 +1,4 @@
+using Dwaallicht.Input;
 using UnityEngine;
 
 public class MapCameraController : MonoBehaviour
@@ -69,19 +70,19 @@ public class MapCameraController : MonoBehaviour
 
     void HandleDrag()
     {
-        if (Input.GetMouseButtonDown(0))
+        if (DwaallichtInput.TryGetPrimaryPointerDown(out var pointerPosition))
         {
-            _dragOrigin = Input.mousePosition;
+            _dragOrigin = pointerPosition;
             _isDragging = true;
         }
 
-        if (Input.GetMouseButtonUp(0))
+        if (DwaallichtInput.PrimaryPointerReleasedThisFrame())
             _isDragging = false;
 
-        if (_isDragging && Input.GetMouseButton(0))
+        if (_isDragging && DwaallichtInput.TryGetPrimaryPointer(out pointerPosition))
         {
-            Vector3 delta = Input.mousePosition - _dragOrigin;
-            _dragOrigin = Input.mousePosition;
+            Vector3 delta = (Vector3)pointerPosition - _dragOrigin;
+            _dragOrigin = pointerPosition;
 
             float scale = (transform.position.y / mapController.tileWorldSize) * dragSpeed * 0.01f;
             // Euler(90,0,180): screen-right=world+X, screen-up=world-Z
@@ -92,7 +93,7 @@ public class MapCameraController : MonoBehaviour
 
     void HandleZoom()
     {
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        float scroll = DwaallichtInput.ReadScrollSteps();
         if (Mathf.Abs(scroll) < 0.001f) return;
 
         float step = scroll * zoomSpeed * mapController.tileWorldSize;

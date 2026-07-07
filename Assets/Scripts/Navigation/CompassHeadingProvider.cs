@@ -1,5 +1,7 @@
 using System.Collections;
+using Dwaallicht.Input;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
 using UnityEngine.Android;
@@ -34,10 +36,13 @@ namespace Dwaallicht.Navigation
         private float smoothedHeading;
         private float headingVelocity;
         private bool deviceStartupAttempted;
+        private AttitudeSensor attitudeSensor;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         private bool? androidLocationPermissionGranted;
+        private int androidLocationPermissionResponses;
         private PermissionCallbacks androidLocationPermissionCallbacks;
+        private AndroidLocationBridge androidLocation;
 #endif
 
         public bool IsReady { get; private set; }
@@ -47,12 +52,14 @@ namespace Dwaallicht.Navigation
         public float HeadingAccuracy { get; private set; } = -1f;
         public Vector2 CurrentLatLon { get; private set; }
         public string Status { get; private set; } = "Starting";
+        public bool CompassMayBeUnreliable { get; private set; }
 
         private void OnEnable()
         {
             CurrentLatLon = simulatedLatLon;
             RawHeading = simulatedHeading;
             smoothedHeading = simulatedHeading;
+            CompassMayBeUnreliable = false;
 
             if (ResolveSource() == HeadingSource.DeviceCompass)
             {
@@ -69,8 +76,7 @@ namespace Dwaallicht.Navigation
         {
             if (deviceStartupAttempted)
             {
-                Input.compass.enabled = false;
-                Input.location.Stop();
+                DisableDeviceSensors();
             }
         }
 
@@ -129,7 +135,7 @@ namespace Dwaallicht.Navigation
 #if UNITY_ANDROID && !UNITY_EDITOR
             yield return RequestAndroidLocationPermission();
 
-            if (!Permission.HasUserAuthorizedPermission(Permission.FineLocation))
+            if (!HasAndroidLocationPermission())
             {
                 IsReady = false;
                 Status = "Location permission denied";
@@ -137,71 +143,130 @@ namespace Dwaallicht.Navigation
             }
 #endif
 
-            if (!Input.location.isEnabledByUser)
+            attitudeSensor = ResolveAttitudeSensor();
+            if (attitudeSensor == null)
             {
                 IsReady = false;
-                Status = "Location disabled by user";
+                Status = "Attitude sensor unavailable";
                 yield break;
             }
 
-            Input.location.Start(1f, 1f);
-            Input.compass.enabled = true;
+            InputSystem.EnableDevice(attitudeSensor);
+            CompassMayBeUnreliable = !IsNorthReferencedAttitudeSensor(attitudeSensor);
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            androidLocation = new AndroidLocationBridge();
+            if (!androidLocation.Start(1f, 1f, out var locationStatus))
+            {
+                IsReady = false;
+                Status = locationStatus;
+                yield break;
+            }
 
             var maxWaitSeconds = 12;
-            while (Input.location.status == LocationServiceStatus.Initializing && maxWaitSeconds > 0)
+            while (!androidLocation.HasLocation && maxWaitSeconds > 0)
             {
                 yield return new WaitForSeconds(1f);
                 maxWaitSeconds--;
             }
 
-            if (Input.location.status != LocationServiceStatus.Running)
+            if (!androidLocation.HasLocation)
             {
                 IsReady = false;
-                Status = "Location service unavailable";
+                Status = "Android location unavailable";
                 yield break;
             }
 
+            CurrentLatLon = androidLocation.LatLon;
+#else
+            CurrentLatLon = simulatedLatLon;
+#endif
+
             IsReady = true;
-            Status = "Device compass ready";
+            Status = CompassMayBeUnreliable
+                ? "Kompas werkt mogelijk niet op deze telefoon"
+                : "Device sensors ready";
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         private IEnumerator RequestAndroidLocationPermission()
         {
-            if (Permission.HasUserAuthorizedPermission(Permission.FineLocation))
+            if (HasAndroidLocationPermission())
             {
                 yield break;
             }
 
             androidLocationPermissionGranted = null;
+            androidLocationPermissionResponses = 0;
             androidLocationPermissionCallbacks = new PermissionCallbacks();
-            androidLocationPermissionCallbacks.PermissionGranted += _ => androidLocationPermissionGranted = true;
-            androidLocationPermissionCallbacks.PermissionDenied += _ => androidLocationPermissionGranted = false;
-            androidLocationPermissionCallbacks.PermissionDeniedAndDontAskAgain += _ => androidLocationPermissionGranted = false;
+            androidLocationPermissionCallbacks.PermissionGranted += OnAndroidLocationPermissionGranted;
+            androidLocationPermissionCallbacks.PermissionDenied += OnAndroidLocationPermissionDenied;
+            androidLocationPermissionCallbacks.PermissionDeniedAndDontAskAgain += OnAndroidLocationPermissionDenied;
 
             Status = "Requesting location permission";
-            Permission.RequestUserPermission(Permission.FineLocation, androidLocationPermissionCallbacks);
+            Permission.RequestUserPermissions(
+                new[] { Permission.CoarseLocation, Permission.FineLocation },
+                androidLocationPermissionCallbacks);
 
             while (!androidLocationPermissionGranted.HasValue)
             {
                 yield return null;
             }
         }
-#endif
 
-        private void UpdateDeviceHeading()
+        private static bool HasAndroidLocationPermission()
         {
-            if (!IsReady)
+            return Permission.HasUserAuthorizedPermission(Permission.FineLocation)
+                || Permission.HasUserAuthorizedPermission(Permission.CoarseLocation);
+        }
+
+        private void OnAndroidLocationPermissionGranted(string permissionName)
+        {
+            if (!IsAndroidLocationPermission(permissionName))
             {
                 return;
             }
 
-            var data = Input.location.lastData;
-            CurrentLatLon = new Vector2(data.latitude, data.longitude);
-            HeadingAccuracy = Input.compass.headingAccuracy;
+            androidLocationPermissionGranted = true;
+        }
 
-            float trueHeading = Input.compass.trueHeading;
-            RawHeading = trueHeading > 0.001f ? trueHeading : Input.compass.magneticHeading;
+        private void OnAndroidLocationPermissionDenied(string permissionName)
+        {
+            if (!IsAndroidLocationPermission(permissionName))
+            {
+                return;
+            }
+
+            androidLocationPermissionResponses++;
+            if (androidLocationPermissionResponses >= 2)
+            {
+                androidLocationPermissionGranted = false;
+            }
+        }
+
+        private static bool IsAndroidLocationPermission(string permissionName)
+        {
+            return permissionName == Permission.FineLocation
+                || permissionName == Permission.CoarseLocation;
+        }
+#endif
+
+        private void UpdateDeviceHeading()
+        {
+            if (!IsReady || attitudeSensor == null)
+            {
+                return;
+            }
+
+            RawHeading = HeadingFromAttitude(attitudeSensor.attitude.ReadValue());
+            HeadingAccuracy = -1f;
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (androidLocation != null && androidLocation.HasLocation)
+            {
+                CurrentLatLon = androidLocation.LatLon;
+            }
+#endif
         }
 
         private void UpdateSimulation()
@@ -212,12 +277,12 @@ namespace Dwaallicht.Navigation
             if (keyboardSimulation)
             {
                 float turn = 0f;
-                if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A))
+                if (DwaallichtInput.IsAnyKeyPressed(Key.LeftArrow, Key.A))
                 {
                     turn -= 1f;
                 }
 
-                if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D))
+                if (DwaallichtInput.IsAnyKeyPressed(Key.RightArrow, Key.D))
                 {
                     turn += 1f;
                 }
@@ -228,12 +293,12 @@ namespace Dwaallicht.Navigation
                 }
 
                 float walk = 0f;
-                if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W))
+                if (DwaallichtInput.IsAnyKeyPressed(Key.UpArrow, Key.W))
                 {
                     walk += 1f;
                 }
 
-                if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S))
+                if (DwaallichtInput.IsAnyKeyPressed(Key.DownArrow, Key.S))
                 {
                     walk -= 1f;
                 }
@@ -249,6 +314,62 @@ namespace Dwaallicht.Navigation
             HeadingAccuracy = 0f;
         }
 
+        private static AttitudeSensor ResolveAttitudeSensor()
+        {
+            AttitudeSensor fallback = null;
+
+            foreach (var device in InputSystem.devices)
+            {
+                if (device is not AttitudeSensor sensor)
+                {
+                    continue;
+                }
+
+                fallback ??= sensor;
+                if (device.layout.Contains("RotationVector") && !device.layout.Contains("GameRotationVector"))
+                {
+                    return sensor;
+                }
+            }
+
+            return fallback ?? AttitudeSensor.current;
+        }
+
+        private static bool IsNorthReferencedAttitudeSensor(InputDevice device)
+        {
+            return device != null
+                && device.layout.Contains("RotationVector")
+                && !device.layout.Contains("GameRotationVector");
+        }
+
+        private void DisableDeviceSensors()
+        {
+            if (attitudeSensor != null)
+            {
+                InputSystem.DisableDevice(attitudeSensor);
+                attitudeSensor = null;
+            }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            androidLocation?.Dispose();
+            androidLocation = null;
+#endif
+        }
+
+        private static float HeadingFromAttitude(Quaternion attitude)
+        {
+            var phoneTop = attitude * Vector3.up;
+            phoneTop.y = 0f;
+
+            if (phoneTop.sqrMagnitude < 0.0001f)
+            {
+                return 0f;
+            }
+
+            phoneTop.Normalize();
+            return GeoMath.NormalizeDegrees(Mathf.Atan2(phoneTop.x, phoneTop.z) * Mathf.Rad2Deg);
+        }
+
         private static Vector2 MoveLatLon(Vector2 latLon, float bearingDegrees, float meters)
         {
             const float metersPerDegreeLatitude = 111320f;
@@ -260,5 +381,118 @@ namespace Dwaallicht.Navigation
             float longitude = latLon.y + eastMeters / Mathf.Max(1f, longitudeScale);
             return new Vector2(latitude, longitude);
         }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private sealed class AndroidLocationBridge : AndroidJavaProxy, System.IDisposable
+        {
+            private readonly AndroidJavaObject activity;
+            private readonly AndroidJavaObject locationManager;
+            private bool disposed;
+
+            public AndroidLocationBridge()
+                : base("android.location.LocationListener")
+            {
+                using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+                activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+                locationManager = activity.Call<AndroidJavaObject>("getSystemService", "location");
+            }
+
+            public bool HasLocation { get; private set; }
+            public Vector2 LatLon { get; private set; }
+
+            public bool Start(float minDistanceMeters, float minTimeSeconds, out string status)
+            {
+                if (locationManager == null)
+                {
+                    status = "Android location manager unavailable";
+                    return false;
+                }
+
+                var started = false;
+                started |= TryStartProvider("gps", minDistanceMeters, minTimeSeconds);
+                started |= TryStartProvider("network", minDistanceMeters, minTimeSeconds);
+
+                status = started ? "Waiting for Android location" : "Location disabled by user";
+                return started;
+            }
+
+            public void Dispose()
+            {
+                if (disposed)
+                {
+                    return;
+                }
+
+                disposed = true;
+
+                try
+                {
+                    locationManager?.Call("removeUpdates", this);
+                }
+                catch (AndroidJavaException)
+                {
+                }
+
+                locationManager?.Dispose();
+                activity?.Dispose();
+            }
+
+            public void onLocationChanged(AndroidJavaObject location)
+            {
+                CaptureLocation(location);
+            }
+
+            public void onProviderEnabled(string provider)
+            {
+            }
+
+            public void onProviderDisabled(string provider)
+            {
+            }
+
+            public void onStatusChanged(string provider, int status, AndroidJavaObject extras)
+            {
+            }
+
+            private bool TryStartProvider(string provider, float minDistanceMeters, float minTimeSeconds)
+            {
+                try
+                {
+                    if (!locationManager.Call<bool>("isProviderEnabled", provider))
+                    {
+                        return false;
+                    }
+
+                    using (var lastKnownLocation = locationManager.Call<AndroidJavaObject>("getLastKnownLocation", provider))
+                    {
+                        CaptureLocation(lastKnownLocation);
+                    }
+
+                    using var looperClass = new AndroidJavaClass("android.os.Looper");
+                    using var mainLooper = looperClass.CallStatic<AndroidJavaObject>("getMainLooper");
+                    var minTimeMilliseconds = (long)Mathf.RoundToInt(minTimeSeconds * 1000f);
+                    locationManager.Call("requestLocationUpdates", provider, minTimeMilliseconds, minDistanceMeters, this, mainLooper);
+                    return true;
+                }
+                catch (AndroidJavaException)
+                {
+                    return false;
+                }
+            }
+
+            private void CaptureLocation(AndroidJavaObject location)
+            {
+                if (location == null)
+                {
+                    return;
+                }
+
+                LatLon = new Vector2(
+                    (float)location.Call<double>("getLatitude"),
+                    (float)location.Call<double>("getLongitude"));
+                HasLocation = true;
+            }
+        }
+#endif
     }
 }

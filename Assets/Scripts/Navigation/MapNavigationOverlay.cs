@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Dwaallicht.Input;
 using UnityEngine;
 
 namespace Dwaallicht.Navigation
@@ -240,12 +241,12 @@ namespace Dwaallicht.Navigation
 
         private void HandleSelectionClick()
         {
-            if (!Input.GetMouseButtonDown(0) || mapCamera == null || poiManager == null)
+            if (!DwaallichtInput.TryGetPrimaryPointerDown(out var pointerPosition) || mapCamera == null || poiManager == null)
             {
                 return;
             }
 
-            var ray = mapCamera.ScreenPointToRay(Input.mousePosition);
+            var ray = mapCamera.ScreenPointToRay(pointerPosition);
             if (!Physics.Raycast(ray, out var hit))
             {
                 return;
