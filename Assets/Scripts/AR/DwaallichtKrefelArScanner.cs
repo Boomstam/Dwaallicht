@@ -38,6 +38,10 @@ namespace Dwaallicht.AR
         private GameObject simulatedImage;
         private bool scanningActive;
         private bool subscribed;
+        private ARCameraManager subscribedCameraManager;
+        private int cameraFrameCount;
+        private int lastCameraTextureCount;
+        private float lastCameraFrameRealtime = -1f;
 
         public bool IsScanningActive => scanningActive;
         public bool HasVisibleCube => cube != null && cube.activeInHierarchy;
@@ -46,17 +50,22 @@ namespace Dwaallicht.AR
         private void Awake()
         {
             ResolveReferences();
+            EnsureArSubsystemsRunning();
             SetScanningActive(false);
         }
 
         private void OnEnable()
         {
+            ResolveReferences();
             Subscribe();
+            SubscribeCameraFrames();
+            EnsureArSubsystemsRunning();
         }
 
         private void OnDisable()
         {
             Unsubscribe();
+            UnsubscribeCameraFrames();
         }
 
         private void Update()
@@ -72,9 +81,11 @@ namespace Dwaallicht.AR
             ResolveReferences();
             scanningActive = active;
 
+            EnsureArSubsystemsRunning();
+
             if (arSession != null)
             {
-                arSession.enabled = active;
+                arSession.enabled = true;
             }
 
             if (trackedImageManager != null)
@@ -84,7 +95,7 @@ namespace Dwaallicht.AR
 
             if (arCameraManager != null)
             {
-                arCameraManager.enabled = active;
+                arCameraManager.enabled = true;
             }
 
             if (arCameraBackground != null)
@@ -105,6 +116,7 @@ namespace Dwaallicht.AR
             if (active)
             {
                 Subscribe();
+                SubscribeCameraFrames();
                 StartEditorSimulationIfNeeded();
             }
             else
@@ -286,6 +298,55 @@ namespace Dwaallicht.AR
             subscribed = false;
         }
 
+        private void SubscribeCameraFrames()
+        {
+            if (subscribedCameraManager == arCameraManager)
+            {
+                return;
+            }
+
+            UnsubscribeCameraFrames();
+
+            if (arCameraManager == null)
+            {
+                return;
+            }
+
+            arCameraManager.frameReceived += OnCameraFrameReceived;
+            subscribedCameraManager = arCameraManager;
+        }
+
+        private void UnsubscribeCameraFrames()
+        {
+            if (subscribedCameraManager == null)
+            {
+                return;
+            }
+
+            subscribedCameraManager.frameReceived -= OnCameraFrameReceived;
+            subscribedCameraManager = null;
+        }
+
+        private void OnCameraFrameReceived(ARCameraFrameEventArgs args)
+        {
+            cameraFrameCount++;
+            lastCameraTextureCount = args.textures?.Count ?? 0;
+            lastCameraFrameRealtime = Time.realtimeSinceStartup;
+        }
+
+        private void EnsureArSubsystemsRunning()
+        {
+            if (arSession != null)
+            {
+                arSession.enabled = true;
+            }
+
+            if (arCameraManager != null)
+            {
+                arCameraManager.enabled = true;
+            }
+        }
+
         private void ResolveReferences()
         {
             if (xrOrigin == null)
@@ -340,24 +401,51 @@ namespace Dwaallicht.AR
             ResolveReferences();
 
             var sessionState = ARSession.state.ToString();
+            var notTrackingReason = ARSession.notTrackingReason.ToString();
+            var frameAge = lastCameraFrameRealtime >= 0f
+                ? $"{Time.realtimeSinceStartup - lastCameraFrameRealtime:0.0}s"
+                : "-";
             var originStatus = xrOrigin != null ? "ok" : "missing";
-            var sessionStatus = arSession != null ? EnabledStatus(arSession.enabled) : "missing";
-            var imageStatus = trackedImageManager != null ? EnabledStatus(trackedImageManager.enabled) : "missing";
-            var arCameraStatus = arCamera != null ? EnabledStatus(arCamera.enabled) : "missing";
-            var cameraManagerStatus = arCameraManager != null ? EnabledStatus(arCameraManager.enabled) : "missing";
+            var sessionStatus = arSession != null
+                ? $"{EnabledStatus(arSession.enabled)}, active {EnabledStatus(arSession.isActiveAndEnabled)}, {SessionSubsystemStatus(arSession)}"
+                : "missing";
+            var imageStatus = trackedImageManager != null
+                ? $"{EnabledStatus(trackedImageManager.enabled)}, active {EnabledStatus(trackedImageManager.isActiveAndEnabled)}"
+                : "missing";
+            var arCameraStatus = arCamera != null
+                ? $"{EnabledStatus(arCamera.enabled)}, active {EnabledStatus(arCamera.isActiveAndEnabled)}"
+                : "missing";
+            var cameraManagerStatus = arCameraManager != null
+                ? $"{EnabledStatus(arCameraManager.enabled)}, active {EnabledStatus(arCameraManager.isActiveAndEnabled)}, permission {EnabledStatus(arCameraManager.permissionGranted)}, mode {arCameraManager.currentRenderingMode}, {CameraSubsystemStatus(arCameraManager)}"
+                : "missing";
             var backgroundStatus = arCameraBackground != null
                 ? $"{EnabledStatus(arCameraBackground.enabled)}, rendering {EnabledStatus(arCameraBackground.backgroundRenderingEnabled)}, material {EnabledStatus(arCameraBackground.material != null)}"
                 : "missing";
 
-            return $"AR scan {(scanningActive ? "active" : "inactive")}  session {sessionState}\n" +
+            return $"AR scan {(scanningActive ? "active" : "inactive")}  session {sessionState}  reason {notTrackingReason}\n" +
                    $"origin {originStatus}  session component {sessionStatus}  images {imageStatus}\n" +
                    $"camera {arCameraStatus}  manager {cameraManagerStatus}\n" +
+                   $"frames {cameraFrameCount}  tex {lastCameraTextureCount}  age {frameAge}\n" +
                    $"background {backgroundStatus}";
         }
 
         private static string EnabledStatus(bool enabled)
         {
             return enabled ? "on" : "off";
+        }
+
+        private static string SessionSubsystemStatus(ARSession session)
+        {
+            return session.subsystem != null
+                ? $"sub on, run {EnabledStatus(session.subsystem.running)}"
+                : "sub missing";
+        }
+
+        private static string CameraSubsystemStatus(ARCameraManager cameraManager)
+        {
+            return cameraManager.subsystem != null
+                ? $"sub on, run {EnabledStatus(cameraManager.subsystem.running)}"
+                : "sub missing";
         }
     }
 }

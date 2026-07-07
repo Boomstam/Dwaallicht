@@ -1,4 +1,5 @@
 using Dwaallicht.AR;
+using System.Collections.Generic;
 using Unity.XR.CoreUtils;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -78,16 +79,26 @@ public static class DwaallichtArProjectSetup
             AssetDatabase.CreateAsset(library, ReferenceLibraryPath);
         }
 
-        while (library.count > 0)
+        var imageIndex = -1;
+        for (var i = 0; i < library.count; i++)
         {
-            library.RemoveAt(0);
+            if (library[i].name == DwaallichtKrefelArScanner.KrefelReferenceImageName)
+            {
+                imageIndex = i;
+                break;
+            }
         }
 
-        library.Add();
-        library.SetName(0, DwaallichtKrefelArScanner.KrefelReferenceImageName);
-        library.SetTexture(0, texture, true);
-        library.SetSpecifySize(0, true);
-        library.SetSize(0, new Vector2(
+        if (imageIndex < 0)
+        {
+            library.Add();
+            imageIndex = library.count - 1;
+        }
+
+        library.SetName(imageIndex, DwaallichtKrefelArScanner.KrefelReferenceImageName);
+        library.SetTexture(imageIndex, texture, true);
+        library.SetSpecifySize(imageIndex, true);
+        library.SetSize(imageIndex, new Vector2(
             DwaallichtKrefelArScanner.KrefelImageWidthMeters,
             DwaallichtKrefelArScanner.KrefelImageHeightMeters));
 
@@ -181,6 +192,22 @@ public static class DwaallichtArProjectSetup
         var appCamera = GameObject.Find("App Camera")?.GetComponent<Camera>();
         AssignScannerReferences(scanner, origin, session, trackedImageManager, arCamera, cameraManager, cameraBackground, appCamera);
         scanner.SetScanningActive(false);
+        session.enabled = true;
+        cameraManager.enabled = true;
+        trackedImageManager.enabled = false;
+        cameraBackground.enabled = false;
+        arCamera.enabled = false;
+        if (appCamera != null)
+        {
+            appCamera.enabled = true;
+            EditorUtility.SetDirty(appCamera);
+        }
+
+        EditorUtility.SetDirty(session);
+        EditorUtility.SetDirty(cameraManager);
+        EditorUtility.SetDirty(trackedImageManager);
+        EditorUtility.SetDirty(cameraBackground);
+        EditorUtility.SetDirty(arCamera);
 
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
@@ -188,23 +215,63 @@ public static class DwaallichtArProjectSetup
 
     private static void ConfigureUrpArBackground()
     {
+        var rendererDatas = new HashSet<ScriptableRendererData>();
+
         for (var i = 0; i < RendererDataPaths.Length; i++)
         {
             var rendererData = AssetDatabase.LoadAssetAtPath<ScriptableRendererData>(RendererDataPaths[i]);
-            if (rendererData == null || rendererData.TryGetRendererFeature<ARBackgroundRendererFeature>(out _))
+            if (rendererData != null)
+            {
+                rendererDatas.Add(rendererData);
+            }
+        }
+
+        var urpAssetGuids = AssetDatabase.FindAssets("t:UniversalRenderPipelineAsset");
+        for (var i = 0; i < urpAssetGuids.Length; i++)
+        {
+            var path = AssetDatabase.GUIDToAssetPath(urpAssetGuids[i]);
+            var pipelineAsset = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(path);
+            if (pipelineAsset == null)
             {
                 continue;
             }
 
-            var feature = ScriptableObject.CreateInstance<ARBackgroundRendererFeature>();
-            feature.name = "AR Background Renderer Feature";
-            AssetDatabase.AddObjectToAsset(feature, rendererData);
-            rendererData.rendererFeatures.Add(feature);
-            feature.Create();
-            rendererData.SetDirty();
-            EditorUtility.SetDirty(feature);
-            EditorUtility.SetDirty(rendererData);
+            foreach (var rendererData in pipelineAsset.rendererDataList)
+            {
+                if (rendererData != null)
+                {
+                    rendererDatas.Add(rendererData);
+                }
+            }
         }
+
+        foreach (var rendererData in rendererDatas)
+        {
+            AddRendererFeatureIfMissing<ARBackgroundRendererFeature>(
+                rendererData,
+                "AR Background Renderer Feature");
+            AddRendererFeatureIfMissing<ARCommandBufferSupportRendererFeature>(
+                rendererData,
+                "AR Command Buffer Support Renderer Feature");
+        }
+    }
+
+    private static void AddRendererFeatureIfMissing<T>(ScriptableRendererData rendererData, string featureName)
+        where T : ScriptableRendererFeature
+    {
+        if (rendererData.TryGetRendererFeature<T>(out _))
+        {
+            return;
+        }
+
+        var feature = ScriptableObject.CreateInstance<T>();
+        feature.name = featureName;
+        AssetDatabase.AddObjectToAsset(feature, rendererData);
+        rendererData.rendererFeatures.Add(feature);
+        feature.Create();
+        rendererData.SetDirty();
+        EditorUtility.SetDirty(feature);
+        EditorUtility.SetDirty(rendererData);
     }
 
     private static GameObject EnsureSceneObject(string name, Transform parent)
