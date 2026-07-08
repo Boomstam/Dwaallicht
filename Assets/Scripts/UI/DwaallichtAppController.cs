@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using Dwaallicht.AR;
+using Dwaallicht.Cloud;
 using Dwaallicht.Navigation;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -56,6 +59,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
     [SerializeField]
     private Texture2D mapUnderlayTexture;
     [SerializeField]
+    private string mapImageFolderName = "DriveSync";
+    [SerializeField]
+    private string mapImageFileName = "Map.png";
+    [SerializeField]
+    private bool reloadMapAfterDriveSync = true;
+    [SerializeField]
     private Vector2 mapCenterLatLon = new Vector2(51.096465f, 4.344778f);
     [SerializeField]
     private Vector2 mapUnderlayOffsetPixels = new Vector2(58.10565f, 26.5378056f);
@@ -95,7 +104,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private DwaallichtArScanner arScanner;
     private CompassHeadingProvider headingProvider;
     private PoiManager poiManager;
+    private GoogleDriveFolderSync driveSync;
     private Font font;
+    private Texture2D syncedMapUnderlayTexture;
     private Vector2 lastMapDragLocalPosition;
     private Vector2 lastMapViewDragLocalPosition;
     private Vector2 mapViewOffsetPixels;
@@ -114,7 +125,24 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return;
         }
 
+        SubscribeToDriveSync();
+        TryLoadSyncedMapUnderlay();
         Build();
+    }
+
+    private void OnDisable()
+    {
+        if (driveSync != null)
+        {
+            driveSync.SyncFinished -= HandleDriveSyncFinished;
+            driveSync = null;
+        }
+
+        if (syncedMapUnderlayTexture != null)
+        {
+            Destroy(syncedMapUnderlayTexture);
+            syncedMapUnderlayTexture = null;
+        }
     }
 
     private void Update()
@@ -126,6 +154,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         EnsureHeadingProvider();
         EnsurePoiManager();
+        SubscribeToDriveSync();
 
         RefreshDynamicText();
         HandleMapCalibrationHandleDrag();
@@ -699,6 +728,30 @@ public sealed class DwaallichtAppController : MonoBehaviour
         arScanner = FindFirstObjectByType<DwaallichtArScanner>(FindObjectsInactive.Include);
     }
 
+    private void SubscribeToDriveSync()
+    {
+        if (!reloadMapAfterDriveSync || driveSync != null)
+        {
+            return;
+        }
+
+        driveSync = FindFirstObjectByType<GoogleDriveFolderSync>();
+        if (driveSync != null)
+        {
+            driveSync.SyncFinished += HandleDriveSyncFinished;
+        }
+    }
+
+    private void HandleDriveSyncFinished(bool success)
+    {
+        if (!success || !TryLoadSyncedMapUnderlay())
+        {
+            return;
+        }
+
+        ApplyMapUnderlayTexture();
+    }
+
     private void RefreshDynamicText()
     {
         if (debugText != null)
@@ -714,13 +767,14 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void AddMapUnderlay(RectTransform parent)
     {
-        if (mapUnderlayTexture == null)
+        var texture = GetActiveMapUnderlayTexture();
+        if (texture == null)
         {
             AddText(parent, "Map texture missing", 18, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             return;
         }
 
-        mapUnderlayRect = AddRawImage(parent, "MapUnderlay", mapUnderlayTexture, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), mapUnderlayOffsetPixels, GetMapUnderlaySize());
+        mapUnderlayRect = AddRawImage(parent, "MapUnderlay", texture, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), mapUnderlayOffsetPixels, GetMapUnderlaySize());
         mapUnderlayRect.localEulerAngles = new Vector3(0f, 0f, mapUnderlayRotationDegrees);
         mapUnderlayRect.SetAsFirstSibling();
     }
@@ -1216,6 +1270,76 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
     }
 
+    private void ApplyMapUnderlayTexture()
+    {
+        var texture = GetActiveMapUnderlayTexture();
+        if (mapUnderlayRect != null)
+        {
+            var rawImage = mapUnderlayRect.GetComponent<RawImage>();
+            if (rawImage != null)
+            {
+                rawImage.texture = texture;
+            }
+
+            ApplyMapUnderlayCalibration();
+        }
+
+        if (tabIds[activeTab] == "M")
+        {
+            ShowTab(activeTab);
+        }
+    }
+
+    private bool TryLoadSyncedMapUnderlay()
+    {
+        foreach (var path in GetMapImageCandidatePaths())
+        {
+            if (string.IsNullOrWhiteSpace(path) || path.Contains("://") || !File.Exists(path))
+            {
+                continue;
+            }
+
+            try
+            {
+                var imageBytes = File.ReadAllBytes(path);
+                var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!ImageConversion.LoadImage(texture, imageBytes, false))
+                {
+                    Destroy(texture);
+                    Debug.LogWarning($"[DwaallichtAppController] Could not decode map image from {path}.");
+                    continue;
+                }
+
+                texture.name = Path.GetFileNameWithoutExtension(path);
+                if (syncedMapUnderlayTexture != null)
+                {
+                    Destroy(syncedMapUnderlayTexture);
+                }
+
+                syncedMapUnderlayTexture = texture;
+                Debug.Log($"[DwaallichtAppController] Loaded synced map underlay from {path}.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[DwaallichtAppController] Could not load synced map underlay from {path}: {ex.Message}");
+            }
+        }
+
+        return false;
+    }
+
+    private IEnumerable<string> GetMapImageCandidatePaths()
+    {
+        if (driveSync != null)
+        {
+            yield return Path.Combine(driveSync.LocalRootPath, mapImageFileName);
+        }
+
+        yield return Path.Combine(Application.persistentDataPath, mapImageFolderName, mapImageFileName);
+        yield return Path.Combine(Application.streamingAssetsPath, mapImageFolderName, mapImageFileName);
+    }
+
     private void SaveMapCalibration()
     {
         EnsureMapCalibrationTargets();
@@ -1277,12 +1401,18 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private Vector2 GetMapUnderlaySize()
     {
-        if (mapUnderlayTexture == null)
+        var texture = GetActiveMapUnderlayTexture();
+        if (texture == null)
         {
             return Vector2.zero;
         }
 
-        return new Vector2(mapUnderlayTexture.width, mapUnderlayTexture.height) * mapZoomMultiplier;
+        return new Vector2(texture.width, texture.height) * mapZoomMultiplier;
+    }
+
+    private Texture2D GetActiveMapUnderlayTexture()
+    {
+        return syncedMapUnderlayTexture != null ? syncedMapUnderlayTexture : mapUnderlayTexture;
     }
 
     private float GetScaleBarMeters()

@@ -3,9 +3,16 @@
         {
             "driveId": "1iHJgNwz2Z72-ocqmMbC8serXXmRRF4qc4W7WguTUSFA",
             "localPath": "Points of Interest.csv",
-            "modifiedTime": "2026-07-08T13:13:01.272Z",
+            "modifiedTime": "2026-07-08T13:38:05.857Z",
             "md5Checksum": "",
             "exportMimeType": "text/csv"
+        },
+        {
+            "driveId": "13Px4jaQH9jlgWbmEiQUgRhUOn29b2hvK",
+            "localPath": "Map.png",
+            "modifiedTime": "2026-07-08T13:42:30.024Z",
+            "md5Checksum": "d91f62ea8aa55bb91ba6d7128b7a1da5",
+            "exportMimeType": ""
         }
     ]
 }
