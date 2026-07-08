@@ -35,6 +35,19 @@ public sealed class PoiSheetCsvParserTests
         Assert.That(GetField<float>(pois[0], "longitude"), Is.EqualTo(4.34779f).Within(0.00001f));
     }
 
+    [Test]
+    public void TryParse_UsesArColumnForArAvailability()
+    {
+        var csv = "NAME,LATITUDE,LONGITUDE,PUBLISH,AR\n"
+            + "Scanner,51.09475,4.34779,YES,YES\n"
+            + "Plain,51.1076,4.369738,YES,NO\n";
+
+        Assert.That(TryParse(csv, Color.red, out var pois, out var error), Is.True, error);
+        Assert.That(pois, Has.Count.EqualTo(2));
+        Assert.That(GetField<bool>(pois[0], "hasAr"), Is.True);
+        Assert.That(GetField<bool>(pois[1], "hasAr"), Is.False);
+    }
+
     private static bool TryParse(string csv, Color color, out IList pois, out string error)
     {
         var method = ParserType.GetMethod("TryParse", BindingFlags.Public | BindingFlags.Static);

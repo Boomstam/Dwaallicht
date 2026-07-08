@@ -24,6 +24,7 @@ namespace Dwaallicht.Navigation
             var latitudeIndex = FindColumn(header, "LATITUDE", "LAT", "BREEDTEGRAAD");
             var longitudeIndex = FindColumn(header, "LONGITUDE", "LON", "LNG", "LENGTEGRAAD");
             var publishIndex = FindColumn(header, "PUBLISH", "PUBLICEREN", "ACTIVE");
+            var arIndex = FindColumn(header, "AR", "HASAR", "HAS_AR", "HAS AR", "AUGMENTEDREALITY", "AUGMENTED REALITY");
 
             if (nameIndex < 0 || latitudeIndex < 0 || longitudeIndex < 0)
             {
@@ -72,6 +73,7 @@ namespace Dwaallicht.Navigation
                     latitude = latitude,
                     longitude = longitude,
                     color = pinColor,
+                    hasAr = arIndex >= 0 && IsPublished(GetField(record, arIndex)),
                     active = true
                 });
             }

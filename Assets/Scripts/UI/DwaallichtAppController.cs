@@ -39,7 +39,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float MapCalibrationHandleRadius = 34f;
     private const float MapClickMoveThresholdPixels = 12f;
     private const float MapTouchTapMoveThresholdDips = 24f;
-    private const string PoiArFolderName = "AR";
     private const float PoiDetailArSceneHeight = 560f;
     private const float PoiDetailContentWidth = 318f;
     private const float PoiDetailModuleSpacing = 14f;
@@ -486,8 +485,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         var hasFolder = TryGetPoiFolder(selectedPoi, out var poiFolder);
-        var hasArMap = hasFolder && HasArMap(poiFolder);
-        Debug.Log($"[DwaallichtAppController] Detail tab POI '{selectedPoi.title}' hasFolder={hasFolder} hasArMap={hasArMap} folder='{poiFolder}'");
+        var hasArMap = selectedPoi.hasAr;
+        Debug.Log($"[DwaallichtAppController] Detail tab POI '{selectedPoi.title}' hasFolder={hasFolder} hasAr={hasArMap} folder='{poiFolder}'");
 
         var viewport = AddRect(parent, "PoiDetailScrollViewport", Vector2.zero, Vector2.one, new Vector2(24f, 24f), new Vector2(-24f, -20f));
         poiDetailScrollViewport = viewport;
@@ -521,10 +520,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         AddDetailLabel(content, selectedPoi.title, 28, FontStyle.Bold, Ink, 52f, TextAnchor.UpperCenter, hasArMap);
-        if (!hasFolder)
-        {
-            return;
-        }
 
         var detailColor = Ink;
         var entries = GetPoiContentEntries(poiFolder, hasArMap);
@@ -1847,7 +1842,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     {
         EnsurePoiManager();
         var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
-        return selectedPoi != null && TryGetPoiFolder(selectedPoi, out var folderPath) && HasArMap(folderPath);
+        return selectedPoi != null && selectedPoi.hasAr;
     }
 
     private bool TryGetPoiFolder(PointOfInterest poi, out string folderPath)
@@ -1906,31 +1901,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         yield return Path.Combine(Application.persistentDataPath, mapImageFolderName);
         yield return Path.Combine(Application.streamingAssetsPath, mapImageFolderName);
-    }
-
-    private static bool HasArMap(string poiFolder)
-    {
-        if (string.IsNullOrWhiteSpace(poiFolder) || !Directory.Exists(poiFolder))
-        {
-            return false;
-        }
-
-        if (Directory.Exists(Path.Combine(poiFolder, PoiArFolderName)))
-        {
-            return true;
-        }
-
-        var entries = Directory.GetFileSystemEntries(poiFolder);
-        for (var i = 0; i < entries.Length; i++)
-        {
-            var name = Path.GetFileNameWithoutExtension(entries[i]);
-            if (string.Equals(name, PoiArFolderName, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private List<PoiContentEntry> GetPoiContentEntries(string poiFolder, bool includeAr)
