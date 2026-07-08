@@ -162,15 +162,20 @@ namespace Dwaallicht.Navigation
 
         private void HandleDriveSyncFinished(bool success)
         {
+            var selectedPoiId = SelectedPoi != null ? SelectedPoi.id : "";
             if (!success || !loadSheetPois || !TryLoadSheetPois())
             {
                 return;
             }
 
             PoisChanged?.Invoke();
-            if (SelectedPoi == null || !pois.Contains(SelectedPoi))
+            if (!string.IsNullOrEmpty(selectedPoiId))
             {
-                SelectPoi(pois.Count > 0 ? pois[0] : null);
+                SelectPoi(selectedPoiId);
+            }
+            else
+            {
+                SelectPoi((PointOfInterest)null);
             }
         }
 

@@ -8,10 +8,45 @@
             "exportMimeType": "text/csv"
         },
         {
-            "driveId": "13Px4jaQH9jlgWbmEiQUgRhUOn29b2hvK",
+            "driveId": "1MNxmsOAOzIncmvRpaRX6xCevRq616Ydy",
             "localPath": "Map.png",
-            "modifiedTime": "2026-07-08T13:42:30.024Z",
+            "modifiedTime": "2026-07-08T14:11:48.916Z",
             "md5Checksum": "d91f62ea8aa55bb91ba6d7128b7a1da5",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1qY0QdgbLzAsxc_derXYcSnswcoW00fIp",
+            "localPath": "Rupelbrug/Die Eier von Satan.mp3",
+            "modifiedTime": "2026-07-08T14:01:54.010Z",
+            "md5Checksum": "b781cd4d14788065cf3b25e24112ba2a",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1-d0dxrH4OHfB2TD74i9-Zk16JLx_jTEoQAMMlFljuww",
+            "localPath": "Rupelbrug/Rupelbrug.txt",
+            "modifiedTime": "2026-07-08T14:05:15.343Z",
+            "md5Checksum": "",
+            "exportMimeType": "text/plain"
+        },
+        {
+            "driveId": "1NkptavZOF5EUhJYWtTp5s42MRtrErHbct0RjxVXwIPw",
+            "localPath": "Schorre vijver schiereiland/Text.txt",
+            "modifiedTime": "2026-07-08T14:06:28.454Z",
+            "md5Checksum": "",
+            "exportMimeType": "text/plain"
+        },
+        {
+            "driveId": "1mAEvl2ESQEJFInhZYdFWzVTdrn6EXJHqxF5CFU9X7TA",
+            "localPath": "Spoorwegbrug/Text.txt",
+            "modifiedTime": "2026-07-08T14:04:56.237Z",
+            "md5Checksum": "",
+            "exportMimeType": "text/plain"
+        },
+        {
+            "driveId": "1HQK6sHXGw5Wt97dtk1agYZXqhdqqoq1E",
+            "localPath": "Rupelbrug/Blueberry Hill.mp3",
+            "modifiedTime": "2026-07-08T14:30:38.035Z",
+            "md5Checksum": "05436b14326441b0a8160cb4ac11adeb",
             "exportMimeType": ""
         }
     ]

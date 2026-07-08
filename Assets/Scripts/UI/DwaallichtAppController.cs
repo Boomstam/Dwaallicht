@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.Networking;
 using UnityEngine.Serialization;
 using UnityEngine.UI;
 
@@ -35,6 +36,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float MapMinScaleBarMeters = 10f;
     private const float MapMaxScaleBarMeters = 500f;
     private const float MapCalibrationHandleRadius = 34f;
+    private const string PoiTextFileStem = "Text";
+    private const string PoiArFolderName = "AR";
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
     {
         new Vector2(51.094750f, 4.347785f),
@@ -50,6 +53,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private readonly string[] tabIds = { "K", "M", "L", "S" };
     private readonly Dictionary<string, Button> buttons = new Dictionary<string, Button>();
+    private readonly List<PoiAudioPlayer> poiAudioPlayers = new List<PoiAudioPlayer>();
 
     [SerializeField, Range(0, 3)]
     private int activeTab;
@@ -132,6 +136,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void OnDisable()
     {
+        CleanupPoiAudioPlayers();
+
         if (driveSync != null)
         {
             driveSync.SyncFinished -= HandleDriveSyncFinished;
@@ -218,6 +224,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         LoadMapCalibration();
         EnsureMapCalibrationTargets();
+#if !UNITY_EDITOR
+        mapCalibrationMode = false;
+#endif
         BuildTabs();
         ShowTab(activeTab);
     }
@@ -230,6 +239,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return;
         }
 
+        CleanupPoiAudioPlayers();
         ClearChildren(contentRoot);
         compassRose = null;
         mapFacingArrow = null;
@@ -263,7 +273,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
                 break;
         }
 
-        var scanActive = tabIds[activeTab] == "S";
+        var scanActive = tabIds[activeTab] == "S" && SelectedPoiHasArMap();
         if (appBackgroundImage != null)
         {
             appBackgroundImage.color = scanActive ? Color.clear : AppBackground;
@@ -388,6 +398,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
             AddMapPois(mapContentRoot);
         }
 
+        if (selectedPoi != null)
+        {
+            AddSelectedPoiCard(mapContentRoot, selectedPoi, MapLatLonToAnchoredPosition(selectedPoi.LatLon));
+        }
+
         if (mapCalibrationMode)
         {
             AddMapCalibrationHandles(mapContentRoot);
@@ -423,23 +438,81 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void BuildScopeScreen(RectTransform parent)
     {
-        AddCircle(parent, "ScopeOuter", Color.clear, new Vector2(292f, 430f), new Vector2(0f, -58f), false, Ink, 4f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-        AddCircle(parent, "ScopeInner", Color.clear, new Vector2(260f, 386f), new Vector2(0f, -80f), false, Paper, 2f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-        AddPolyline(parent, "ScanReticleHorizontal", Paper, 3f, new[]
+        EnsurePoiManager();
+        var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
+        if (selectedPoi == null)
         {
-            new Vector2(0.32f, 0.50f),
-            new Vector2(0.68f, 0.50f),
-        });
-        AddPolyline(parent, "ScanReticleVertical", Paper, 3f, new[]
+            AddText(parent, "Geen POI geselecteerd", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Vector2(28f, 0f), new Vector2(-28f, 0f));
+            return;
+        }
+
+        var hasFolder = TryGetPoiFolder(selectedPoi, out var poiFolder);
+        var hasArMap = hasFolder && HasArMap(poiFolder);
+        if (hasArMap)
         {
-            new Vector2(0.50f, 0.34f),
-            new Vector2(0.50f, 0.66f),
-        });
-        AddText(parent, "play/scan", 26, FontStyle.Normal, Paper, TextAnchor.MiddleCenter, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 120f), new Vector2(0f, 172f));
+            AddCircle(parent, "ScopeOuter", Color.clear, new Vector2(292f, 430f), new Vector2(0f, -58f), false, Ink, 4f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            AddCircle(parent, "ScopeInner", Color.clear, new Vector2(260f, 386f), new Vector2(0f, -80f), false, Paper, 2f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+            AddPolyline(parent, "ScanReticleHorizontal", Paper, 3f, new[]
+            {
+                new Vector2(0.32f, 0.50f),
+                new Vector2(0.68f, 0.50f),
+            });
+            AddPolyline(parent, "ScanReticleVertical", Paper, 3f, new[]
+            {
+                new Vector2(0.50f, 0.34f),
+                new Vector2(0.50f, 0.66f),
+            });
+        }
+
+        var viewport = AddRect(parent, "PoiDetailScrollViewport", Vector2.zero, Vector2.one, new Vector2(24f, 24f), new Vector2(-24f, -20f));
+        var viewportImage = viewport.gameObject.AddComponent<Image>();
+        viewportImage.color = Color.clear;
+        viewportImage.raycastTarget = true;
+        viewport.gameObject.AddComponent<RectMask2D>();
+        var scrollRect = viewport.gameObject.AddComponent<ScrollRect>();
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+        var content = AddRect(viewport, "PoiDetailContent", new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 0f), new Vector2(0f, 1f));
+        content.pivot = new Vector2(0.5f, 1f);
+        var layout = content.gameObject.AddComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(0, 0, 0, 20);
+        layout.spacing = 14f;
+        layout.childAlignment = TextAnchor.UpperCenter;
+        layout.childControlWidth = true;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        var fitter = content.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scrollRect.content = content;
+        scrollRect.viewport = viewport;
+
+        AddDetailLabel(content, selectedPoi.title, 28, FontStyle.Bold, hasArMap ? Paper : Ink, 52f);
+        if (!hasFolder)
+        {
+            return;
+        }
+
+        if (hasArMap)
+        {
+            AddDetailLabel(content, "Scan", 18, FontStyle.Bold, Paper, 34f);
+        }
+
+        foreach (var audioPath in GetPoiAudioPaths(poiFolder))
+        {
+            AddPoiAudioControl(content, audioPath, hasArMap);
+        }
+
+        if (TryReadPoiText(poiFolder, out var text))
+        {
+            AddDetailLabel(content, text, 18, FontStyle.Normal, hasArMap ? Paper : Ink, Mathf.Clamp(MeasureTextHeight(text, 18, 318f), 80f, 520f));
+        }
 
         if (showDeviceDebug)
         {
-            debugText = AddText(parent, "", 12, FontStyle.Normal, Paper, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(28f, 24f), new Vector2(-28f, -520f));
+            debugText = AddText(parent, "", 12, FontStyle.Normal, hasArMap ? Paper : Ink, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(28f, 24f), new Vector2(-28f, -520f));
         }
     }
 
@@ -712,10 +785,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
             poiManager = provider.AddComponent<PoiManager>();
         }
 
-        if (poiManager.SelectedPoi == null && poiManager.Pois.Count > 0)
-        {
-            poiManager.SelectPoi(poiManager.Pois[0]);
-        }
     }
 
     private void EnsureArScanner()
@@ -754,6 +823,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void RefreshDynamicText()
     {
+        UpdatePoiAudioPlayers();
+
         if (debugText != null)
         {
             debugText.text = BuildDebugText();
@@ -789,10 +860,16 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void AddMapModeControls(RectTransform parent)
     {
+#if !UNITY_EDITOR
+        mapCalibrationMode = false;
+        var buildPanel = AddImage(parent, "MapModePanel", TranslucentPaper, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -48f), new Vector2(96f, 36f));
+        AddCommandButton(buildPanel, showMapPoiPins ? "Pins on" : "Pins off", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(8f, 6f), new Vector2(80f, 24f), ToggleMapPoiPins);
+#else
         var panel = AddImage(parent, "MapModePanel", TranslucentPaper, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -48f), new Vector2(264f, 36f));
         AddCommandButton(panel, mapCalibrationMode ? "Use" : "Use on", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(8f, 6f), new Vector2(74f, 24f), () => SetMapCalibrationMode(false));
         AddCommandButton(panel, mapCalibrationMode ? "Cal on" : "Cal", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(88f, 6f), new Vector2(82f, 24f), () => SetMapCalibrationMode(true));
         AddCommandButton(panel, showMapPoiPins ? "Pins on" : "Pins off", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(176f, 6f), new Vector2(80f, 24f), ToggleMapPoiPins);
+#endif
     }
 
     private void AddMapCalibrationControls(RectTransform parent)
@@ -1447,6 +1524,354 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
     }
 
+    private void AddSelectedPoiCard(RectTransform map, PointOfInterest poi, Vector2 pinPosition)
+    {
+        var title = string.IsNullOrWhiteSpace(poi.title) ? "POI" : poi.title.Trim();
+        var width = Mathf.Clamp(title.Length * 8.5f + 32f, 96f, 252f);
+        var card = AddImage(map, "SelectedPoiCard", TranslucentPaper, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), pinPosition + new Vector2(0f, 48f), new Vector2(width, 34f));
+        var image = card.GetComponent<Image>();
+        image.raycastTarget = true;
+        var outline = card.gameObject.AddComponent<Outline>();
+        outline.effectColor = Ink;
+        outline.effectDistance = new Vector2(1.5f, -1.5f);
+
+        var button = card.gameObject.AddComponent<Button>();
+        button.targetGraphic = image;
+        button.onClick.AddListener(() => ShowTab(3));
+
+        AddText(card, title, 15, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Vector2(10f, 0f), new Vector2(-10f, 0f));
+        AddCircle(map, "SelectedPoiRing", Color.clear, Vector2.one * 56f, pinPosition + new Vector2(0f, 4f), false, Gold, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        card.SetAsLastSibling();
+    }
+
+    private bool SelectedPoiHasArMap()
+    {
+        EnsurePoiManager();
+        var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
+        return selectedPoi != null && TryGetPoiFolder(selectedPoi, out var folderPath) && HasArMap(folderPath);
+    }
+
+    private bool TryGetPoiFolder(PointOfInterest poi, out string folderPath)
+    {
+        folderPath = "";
+        if (poi == null)
+        {
+            return false;
+        }
+
+        var title = string.IsNullOrWhiteSpace(poi.title) ? "" : poi.title.Trim();
+        var sanitizedTitle = SanitizeFileSystemName(title);
+        foreach (var rootPath in GetDriveRootCandidatePaths())
+        {
+            if (string.IsNullOrWhiteSpace(rootPath) || rootPath.Contains("://") || !Directory.Exists(rootPath))
+            {
+                continue;
+            }
+
+            foreach (var name in new[] { title, sanitizedTitle, poi.id })
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                var candidate = Path.Combine(rootPath, name);
+                if (Directory.Exists(candidate))
+                {
+                    folderPath = candidate;
+                    return true;
+                }
+            }
+
+            var normalizedTitle = NormalizePoiFolderName(title);
+            var directories = Directory.GetDirectories(rootPath);
+            for (var i = 0; i < directories.Length; i++)
+            {
+                if (NormalizePoiFolderName(Path.GetFileName(directories[i])) == normalizedTitle)
+                {
+                    folderPath = directories[i];
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private IEnumerable<string> GetDriveRootCandidatePaths()
+    {
+        if (driveSync != null)
+        {
+            yield return driveSync.LocalRootPath;
+        }
+
+        yield return Path.Combine(Application.persistentDataPath, mapImageFolderName);
+        yield return Path.Combine(Application.streamingAssetsPath, mapImageFolderName);
+    }
+
+    private static bool HasArMap(string poiFolder)
+    {
+        if (string.IsNullOrWhiteSpace(poiFolder) || !Directory.Exists(poiFolder))
+        {
+            return false;
+        }
+
+        if (Directory.Exists(Path.Combine(poiFolder, PoiArFolderName)))
+        {
+            return true;
+        }
+
+        var entries = Directory.GetFileSystemEntries(poiFolder);
+        for (var i = 0; i < entries.Length; i++)
+        {
+            var name = Path.GetFileNameWithoutExtension(entries[i]);
+            if (string.Equals(name, PoiArFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private IEnumerable<string> GetPoiAudioPaths(string poiFolder)
+    {
+        if (string.IsNullOrWhiteSpace(poiFolder) || !Directory.Exists(poiFolder))
+        {
+            yield break;
+        }
+
+        var files = Directory.GetFiles(poiFolder, "*.mp3", SearchOption.TopDirectoryOnly);
+        Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < files.Length; i++)
+        {
+            if (!files[i].EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return files[i];
+            }
+        }
+    }
+
+    private bool TryReadPoiText(string poiFolder, out string text)
+    {
+        text = "";
+        if (string.IsNullOrWhiteSpace(poiFolder) || !Directory.Exists(poiFolder))
+        {
+            return false;
+        }
+
+        var preferredPath = Path.Combine(poiFolder, PoiTextFileStem + ".txt");
+        if (File.Exists(preferredPath))
+        {
+            text = File.ReadAllText(preferredPath).Trim();
+            return !string.IsNullOrWhiteSpace(text);
+        }
+
+        var files = Directory.GetFiles(poiFolder, "*.txt", SearchOption.TopDirectoryOnly);
+        Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < files.Length; i++)
+        {
+            if (files[i].EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            text = File.ReadAllText(files[i]).Trim();
+            return !string.IsNullOrWhiteSpace(text);
+        }
+
+        return false;
+    }
+
+    private Text AddDetailLabel(RectTransform parent, string value, int fontSize, FontStyle style, Color color, float preferredHeight)
+    {
+        var holder = AddRect(parent, "DetailLabel", new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, preferredHeight));
+        var layoutElement = holder.gameObject.AddComponent<LayoutElement>();
+        layoutElement.preferredHeight = preferredHeight;
+        var text = AddText(holder, value, fontSize, style, color, TextAnchor.UpperLeft, Vector2.zero, Vector2.one, new Vector2(4f, 0f), new Vector2(-4f, 0f));
+        text.raycastTarget = false;
+        return text;
+    }
+
+    private void AddPoiAudioControl(RectTransform parent, string audioPath, bool overCamera)
+    {
+        var title = Path.GetFileNameWithoutExtension(audioPath);
+        var holder = AddImage(parent, "Audio_" + title, overCamera ? TranslucentPaper : Paper, new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, 82f));
+        var layoutElement = holder.gameObject.AddComponent<LayoutElement>();
+        layoutElement.preferredHeight = 82f;
+        holder.GetComponent<Image>().raycastTarget = false;
+
+        AddText(holder, title, 16, FontStyle.Bold, Ink, TextAnchor.UpperLeft, Vector2.zero, Vector2.one, new Vector2(14f, 48f), new Vector2(-14f, -8f));
+
+        var buttonRect = AddImage(holder, "AudioPlayStop", Ink, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(14f, 14f), new Vector2(48f, 28f));
+        var buttonImage = buttonRect.GetComponent<Image>();
+        buttonImage.raycastTarget = true;
+        var button = buttonRect.gameObject.AddComponent<Button>();
+        button.targetGraphic = buttonImage;
+        var buttonLabel = AddText(buttonRect, "...", 14, FontStyle.Bold, Paper, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+
+        var track = AddImage(holder, "AudioProgressTrack", TranslucentInk, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(74f, 24f), new Vector2(-14f, 28f));
+        var fill = AddImage(track, "AudioProgressFill", Gold, Vector2.zero, new Vector2(0f, 1f), Vector2.zero, Vector2.zero);
+        fill.anchorMax = new Vector2(0f, 1f);
+
+        var sourceGo = new GameObject("AudioSource_" + title);
+        sourceGo.transform.SetParent(transform, false);
+        var source = sourceGo.AddComponent<AudioSource>();
+        source.playOnAwake = false;
+
+        var player = new PoiAudioPlayer
+        {
+            filePath = audioPath,
+            source = source,
+            progressFill = fill.GetComponent<Image>(),
+            buttonLabel = buttonLabel,
+            loading = true,
+        };
+        poiAudioPlayers.Add(player);
+        button.onClick.AddListener(() => TogglePoiAudio(player));
+        StartCoroutine(LoadPoiAudio(player));
+    }
+
+    private void TogglePoiAudio(PoiAudioPlayer player)
+    {
+        if (player == null || player.loadFailed || player.source == null || player.source.clip == null)
+        {
+            return;
+        }
+
+        if (player.source.isPlaying)
+        {
+            player.source.Stop();
+            return;
+        }
+
+        for (var i = 0; i < poiAudioPlayers.Count; i++)
+        {
+            var other = poiAudioPlayers[i];
+            if (other != player && other.source != null && other.source.isPlaying)
+            {
+                other.source.Stop();
+            }
+        }
+
+        player.source.Play();
+    }
+
+    private System.Collections.IEnumerator LoadPoiAudio(PoiAudioPlayer player)
+    {
+        var uri = new Uri(player.filePath).AbsoluteUri;
+        using (var request = UnityWebRequestMultimedia.GetAudioClip(uri, AudioType.MPEG))
+        {
+            yield return request.SendWebRequest();
+
+            if (player.source == null)
+            {
+                yield break;
+            }
+
+            if (HasRequestError(request))
+            {
+                player.loadFailed = true;
+                player.loading = false;
+                if (player.buttonLabel != null)
+                {
+                    player.buttonLabel.text = "!";
+                }
+
+                Debug.LogWarning($"[DwaallichtAppController] Could not load audio {player.filePath}: {request.error}");
+                yield break;
+            }
+
+            player.source.clip = DownloadHandlerAudioClip.GetContent(request);
+            player.loading = false;
+        }
+    }
+
+    private void UpdatePoiAudioPlayers()
+    {
+        for (var i = 0; i < poiAudioPlayers.Count; i++)
+        {
+            var player = poiAudioPlayers[i];
+            if (player == null)
+            {
+                continue;
+            }
+
+            if (player.buttonLabel != null)
+            {
+                player.buttonLabel.text = player.loadFailed ? "!" : player.loading ? "..." : player.source != null && player.source.isPlaying ? "Stop" : "Play";
+            }
+
+            if (player.progressFill != null)
+            {
+                var amount = 0f;
+                if (player.source != null && player.source.clip != null && player.source.clip.length > 0.01f)
+                {
+                    amount = Mathf.Clamp01(player.source.time / player.source.clip.length);
+                }
+
+                player.progressFill.rectTransform.anchorMax = new Vector2(amount, 1f);
+            }
+        }
+    }
+
+    private void CleanupPoiAudioPlayers()
+    {
+        StopAllCoroutines();
+        for (var i = 0; i < poiAudioPlayers.Count; i++)
+        {
+            var player = poiAudioPlayers[i];
+            if (player == null || player.source == null)
+            {
+                continue;
+            }
+
+            if (player.source.clip != null)
+            {
+                Destroy(player.source.clip);
+            }
+
+            Destroy(player.source.gameObject);
+        }
+
+        poiAudioPlayers.Clear();
+    }
+
+    private static bool HasRequestError(UnityWebRequest request)
+    {
+#if UNITY_2020_2_OR_NEWER
+        return request.result == UnityWebRequest.Result.ConnectionError
+            || request.result == UnityWebRequest.Result.ProtocolError
+            || request.result == UnityWebRequest.Result.DataProcessingError;
+#else
+        return request.isNetworkError || request.isHttpError;
+#endif
+    }
+
+    private static float MeasureTextHeight(string text, int fontSize, float width)
+    {
+        var lines = Mathf.Max(1, (text ?? "").Split('\n').Length);
+        var wrappedCharactersPerLine = Mathf.Max(16, Mathf.FloorToInt(width / Mathf.Max(1f, fontSize * 0.48f)));
+        var wrappedLines = Mathf.CeilToInt((text ?? "").Length / (float)wrappedCharactersPerLine);
+        return Mathf.Max(lines, wrappedLines) * (fontSize + 7f) + 20f;
+    }
+
+    private static string SanitizeFileSystemName(string name)
+    {
+        var safeName = string.IsNullOrWhiteSpace(name) ? "untitled" : name.Trim();
+        foreach (var invalid in Path.GetInvalidFileNameChars())
+        {
+            safeName = safeName.Replace(invalid, '_');
+        }
+
+        return safeName;
+    }
+
+    private static string NormalizePoiFolderName(string name)
+    {
+        return SanitizeFileSystemName(name).Replace(" ", "").Replace("_", "").ToLowerInvariant();
+    }
+
     private string BuildNavigationText()
     {
         EnsurePoiManager();
@@ -1570,6 +1995,16 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return new Vector2(
             0.5f + anchoredFromCenter.x / Mathf.Max(1f, rectSize.x),
             0.5f + anchoredFromCenter.y / Mathf.Max(1f, rectSize.y));
+    }
+
+    private sealed class PoiAudioPlayer
+    {
+        public string filePath;
+        public AudioSource source;
+        public Image progressFill;
+        public Text buttonLabel;
+        public bool loading;
+        public bool loadFailed;
     }
 }
 
