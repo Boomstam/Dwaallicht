@@ -38,8 +38,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float MapCalibrationHandleRadius = 34f;
     private const float MapClickMoveThresholdPixels = 12f;
     private const float MapTouchTapMoveThresholdDips = 24f;
-    private const string PoiTextFileStem = "Text";
     private const string PoiArFolderName = "AR";
+    private const float PoiDetailContentWidth = 318f;
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
     {
         new Vector2(51.094750f, 4.347785f),
@@ -56,6 +56,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private readonly string[] tabIds = { "K", "M", "L", "S" };
     private readonly Dictionary<string, Button> buttons = new Dictionary<string, Button>();
     private readonly List<PoiAudioPlayer> poiAudioPlayers = new List<PoiAudioPlayer>();
+    private readonly List<UnityEngine.Object> poiImageAssets = new List<UnityEngine.Object>();
 
     [SerializeField, Range(0, 3)]
     private int activeTab;
@@ -142,6 +143,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private void OnDisable()
     {
         CleanupPoiAudioPlayers();
+        CleanupPoiImageAssets();
         UnsubscribeFromPoiManager();
 
         if (driveSync != null)
@@ -252,6 +254,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         CleanupPoiAudioPlayers();
+        CleanupPoiImageAssets();
         ClearChildren(contentRoot);
         compassRose = null;
         mapFacingArrow = null;
@@ -511,19 +514,26 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return;
         }
 
-        if (hasArMap)
+        var detailColor = hasArMap ? Paper : Ink;
+        var entries = GetPoiContentEntries(poiFolder, hasArMap);
+        for (var i = 0; i < entries.Count; i++)
         {
-            AddDetailLabel(content, "Scan", 18, FontStyle.Bold, Paper, 34f);
-        }
-
-        foreach (var audioPath in GetPoiAudioPaths(poiFolder))
-        {
-            AddPoiAudioControl(content, audioPath, hasArMap);
-        }
-
-        if (TryReadPoiText(poiFolder, out var text))
-        {
-            AddDetailLabel(content, text, 18, FontStyle.Normal, hasArMap ? Paper : Ink, Mathf.Clamp(MeasureTextHeight(text, 18, 318f), 80f, 520f));
+            var entry = entries[i];
+            switch (entry.kind)
+            {
+                case PoiContentKind.Ar:
+                    AddDetailLabel(content, "Scan", 18, FontStyle.Bold, Paper, 34f);
+                    break;
+                case PoiContentKind.Text:
+                    AddDetailLabel(content, entry.text, 18, FontStyle.Normal, detailColor, Mathf.Clamp(MeasureTextHeight(entry.text, 18, PoiDetailContentWidth), 80f, 520f));
+                    break;
+                case PoiContentKind.Audio:
+                    AddPoiAudioControl(content, entry.path, entry.displayName, hasArMap);
+                    break;
+                case PoiContentKind.Image:
+                    AddPoiImageContent(content, entry.path);
+                    break;
+            }
         }
 
         if (showDeviceDebug)
@@ -1865,53 +1875,136 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return false;
     }
 
-    private IEnumerable<string> GetPoiAudioPaths(string poiFolder)
+    private List<PoiContentEntry> GetPoiContentEntries(string poiFolder, bool includeAr)
     {
+        var entries = new List<PoiContentEntry>();
+        if (includeAr)
+        {
+            entries.Add(new PoiContentEntry { kind = PoiContentKind.Ar });
+        }
+
         if (string.IsNullOrWhiteSpace(poiFolder) || !Directory.Exists(poiFolder))
         {
-            yield break;
+            return entries;
         }
 
-        var files = Directory.GetFiles(poiFolder, "*.mp3", SearchOption.TopDirectoryOnly);
-        Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+        var files = Directory.GetFiles(poiFolder, "*", SearchOption.TopDirectoryOnly);
+        Array.Sort(files, ComparePoiContentPaths);
         for (var i = 0; i < files.Length; i++)
         {
-            if (!files[i].EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
-            {
-                yield return files[i];
-            }
-        }
-    }
-
-    private bool TryReadPoiText(string poiFolder, out string text)
-    {
-        text = "";
-        if (string.IsNullOrWhiteSpace(poiFolder) || !Directory.Exists(poiFolder))
-        {
-            return false;
-        }
-
-        var preferredPath = Path.Combine(poiFolder, PoiTextFileStem + ".txt");
-        if (File.Exists(preferredPath))
-        {
-            text = File.ReadAllText(preferredPath).Trim();
-            return !string.IsNullOrWhiteSpace(text);
-        }
-
-        var files = Directory.GetFiles(poiFolder, "*.txt", SearchOption.TopDirectoryOnly);
-        Array.Sort(files, StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < files.Length; i++)
-        {
-            if (files[i].EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
+            var path = files[i];
+            if (path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            text = File.ReadAllText(files[i]).Trim();
-            return !string.IsNullOrWhiteSpace(text);
+            var extension = Path.GetExtension(path);
+            if (string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var text = File.ReadAllText(path).Trim();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        entries.Add(new PoiContentEntry
+                        {
+                            kind = PoiContentKind.Text,
+                            path = path,
+                            text = text,
+                            displayName = StripNumericPrefix(Path.GetFileNameWithoutExtension(path))
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[DwaallichtAppController] Could not read POI text {path}: {ex.Message}");
+                }
+            }
+            else if (string.Equals(extension, ".mp3", StringComparison.OrdinalIgnoreCase))
+            {
+                entries.Add(new PoiContentEntry
+                {
+                    kind = PoiContentKind.Audio,
+                    path = path,
+                    displayName = StripNumericPrefix(Path.GetFileNameWithoutExtension(path))
+                });
+            }
+            else if (IsPoiImageExtension(extension))
+            {
+                entries.Add(new PoiContentEntry
+                {
+                    kind = PoiContentKind.Image,
+                    path = path,
+                    displayName = StripNumericPrefix(Path.GetFileNameWithoutExtension(path))
+                });
+            }
         }
 
-        return false;
+        return entries;
+    }
+
+    private static bool IsPoiImageExtension(string extension)
+    {
+        return string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string StripNumericPrefix(string value)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
+        return TryGetNumericPrefix(trimmed, out _, out var withoutPrefix) ? withoutPrefix : trimmed;
+    }
+
+    private static int ComparePoiContentPaths(string leftPath, string rightPath)
+    {
+        var leftName = Path.GetFileNameWithoutExtension(leftPath);
+        var rightName = Path.GetFileNameWithoutExtension(rightPath);
+        var leftHasPrefix = TryGetNumericPrefix(leftName, out var leftOrder, out var leftWithoutPrefix);
+        var rightHasPrefix = TryGetNumericPrefix(rightName, out var rightOrder, out var rightWithoutPrefix);
+
+        if (leftHasPrefix && rightHasPrefix)
+        {
+            var orderComparison = leftOrder.CompareTo(rightOrder);
+            if (orderComparison != 0)
+            {
+                return orderComparison;
+            }
+
+            return string.Compare(leftWithoutPrefix, rightWithoutPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Compare(Path.GetFileName(leftPath), Path.GetFileName(rightPath), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetNumericPrefix(string value, out int order, out string withoutPrefix)
+    {
+        order = 0;
+        withoutPrefix = string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
+        var index = 0;
+        while (index < withoutPrefix.Length && char.IsDigit(withoutPrefix[index]))
+        {
+            index++;
+        }
+
+        if (index == 0 || index >= withoutPrefix.Length || withoutPrefix[index] != '.')
+        {
+            return false;
+        }
+
+        if (!int.TryParse(withoutPrefix.Substring(0, index), out order))
+        {
+            return false;
+        }
+
+        var stripped = withoutPrefix.Substring(index + 1).TrimStart();
+        if (string.IsNullOrWhiteSpace(stripped))
+        {
+            return false;
+        }
+
+        withoutPrefix = stripped;
+        return true;
     }
 
     private Text AddDetailLabel(RectTransform parent, string value, int fontSize, FontStyle style, Color color, float preferredHeight)
@@ -1924,9 +2017,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return text;
     }
 
-    private void AddPoiAudioControl(RectTransform parent, string audioPath, bool overCamera)
+    private void AddPoiAudioControl(RectTransform parent, string audioPath, string title, bool overCamera)
     {
-        var title = Path.GetFileNameWithoutExtension(audioPath);
         var holder = AddImage(parent, "Audio_" + title, overCamera ? TranslucentPaper : Paper, new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, 82f));
         var layoutElement = holder.gameObject.AddComponent<LayoutElement>();
         layoutElement.preferredHeight = 82f;
@@ -1961,6 +2053,69 @@ public sealed class DwaallichtAppController : MonoBehaviour
         poiAudioPlayers.Add(player);
         button.onClick.AddListener(() => TogglePoiAudio(player));
         StartCoroutine(LoadPoiAudio(player));
+    }
+
+    private void AddPoiImageContent(RectTransform parent, string imagePath)
+    {
+        if (!TryLoadPoiImage(imagePath, out var texture, out var sprite))
+        {
+            return;
+        }
+
+        var aspect = texture.height > 0 ? texture.width / (float)texture.height : 1f;
+        var preferredHeight = Mathf.Clamp(PoiDetailContentWidth / Mathf.Max(0.01f, aspect), 96f, 520f);
+        var holder = AddRect(parent, "Image_" + StripNumericPrefix(Path.GetFileNameWithoutExtension(imagePath)), new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, preferredHeight));
+        var layoutElement = holder.gameObject.AddComponent<LayoutElement>();
+        layoutElement.preferredHeight = preferredHeight;
+        layoutElement.flexibleWidth = 1f;
+
+        var imageRect = AddRect(holder, "PoiImage", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        var image = imageRect.gameObject.AddComponent<Image>();
+        image.sprite = sprite;
+        image.preserveAspect = true;
+        image.color = Color.white;
+        image.raycastTarget = false;
+    }
+
+    private bool TryLoadPoiImage(string imagePath, out Texture2D texture, out Sprite sprite)
+    {
+        texture = null;
+        sprite = null;
+        if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var imageBytes = File.ReadAllBytes(imagePath);
+            texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!ImageConversion.LoadImage(texture, imageBytes, false))
+            {
+                Destroy(texture);
+                texture = null;
+                Debug.LogWarning($"[DwaallichtAppController] Could not decode POI image from {imagePath}.");
+                return false;
+            }
+
+            texture.name = Path.GetFileNameWithoutExtension(imagePath);
+            sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+            sprite.name = texture.name;
+            poiImageAssets.Add(texture);
+            poiImageAssets.Add(sprite);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (texture != null)
+            {
+                Destroy(texture);
+                texture = null;
+            }
+
+            Debug.LogWarning($"[DwaallichtAppController] Could not load POI image {imagePath}: {ex.Message}");
+            return false;
+        }
     }
 
     private void TogglePoiAudio(PoiAudioPlayer player)
@@ -2066,6 +2221,19 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         poiAudioPlayers.Clear();
+    }
+
+    private void CleanupPoiImageAssets()
+    {
+        for (var i = poiImageAssets.Count - 1; i >= 0; i--)
+        {
+            if (poiImageAssets[i] != null)
+            {
+                Destroy(poiImageAssets[i]);
+            }
+        }
+
+        poiImageAssets.Clear();
     }
 
     private static bool HasRequestError(UnityWebRequest request)
@@ -2236,6 +2404,22 @@ public sealed class DwaallichtAppController : MonoBehaviour
         public Text buttonLabel;
         public bool loading;
         public bool loadFailed;
+    }
+
+    private enum PoiContentKind
+    {
+        Ar,
+        Text,
+        Audio,
+        Image
+    }
+
+    private sealed class PoiContentEntry
+    {
+        public PoiContentKind kind;
+        public string path;
+        public string text;
+        public string displayName;
     }
 }
 

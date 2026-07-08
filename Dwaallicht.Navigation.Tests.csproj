@@ -48,6 +48,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets\Tests\EditMode\DwaallichtArScannerTests.cs" />
+    <Compile Include="Assets\Tests\EditMode\DwaallichtAppControllerPoiContentTests.cs" />
     <Compile Include="Assets\Tests\EditMode\NavigationMathTests.cs" />
     <Compile Include="Assets\Tests\EditMode\PoiSheetCsvParserTests.cs" />
     <None Include="Assets\Tests\EditMode\Dwaallicht.Navigation.Tests.asmdef" />
