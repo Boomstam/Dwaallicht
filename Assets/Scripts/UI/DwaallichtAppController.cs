@@ -11,6 +11,7 @@ using UnityEngine.InputSystem.UI;
 using UnityEngine.Networking;
 using UnityEngine.Serialization;
 using UnityEngine.UI;
+using UnityEngine.Video;
 
 [AddComponentMenu("Dwaallicht/App Controller")]
 public sealed class DwaallichtAppController : MonoBehaviour
@@ -56,6 +57,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private readonly string[] tabIds = { "K", "M", "L", "S" };
     private readonly Dictionary<string, Button> buttons = new Dictionary<string, Button>();
     private readonly List<PoiAudioPlayer> poiAudioPlayers = new List<PoiAudioPlayer>();
+    private readonly List<PoiVideoPlayer> poiVideoPlayers = new List<PoiVideoPlayer>();
     private readonly List<UnityEngine.Object> poiImageAssets = new List<UnityEngine.Object>();
 
     [SerializeField, Range(0, 3)]
@@ -106,6 +108,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Text debugText;
     private Text navigationText;
     private Text headingText;
+    private Text mapLoadingText;
     private Text mapCalibrationText;
     private Text mapScaleBarText;
     private DwaallichtArScanner arScanner;
@@ -143,6 +146,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private void OnDisable()
     {
         CleanupPoiAudioPlayers();
+        CleanupPoiVideoPlayers();
         CleanupPoiImageAssets();
         UnsubscribeFromPoiManager();
 
@@ -254,6 +258,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         CleanupPoiAudioPlayers();
+        CleanupPoiVideoPlayers();
         CleanupPoiImageAssets();
         ClearChildren(contentRoot);
         compassRose = null;
@@ -261,6 +266,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         debugText = null;
         navigationText = null;
         headingText = null;
+        mapLoadingText = null;
         mapViewport = null;
         mapContentRoot = null;
         mapUnderlayRect = null;
@@ -441,6 +447,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
             AddMapCalibrationControls(map);
         }
 
+        AddMapLoadingIndicator(map);
         renderedMapPoiFingerprint = GetMapPoiFingerprint();
     }
 
@@ -529,6 +536,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
                     break;
                 case PoiContentKind.Audio:
                     AddPoiAudioControl(content, entry.path, entry.displayName, hasArMap);
+                    break;
+                case PoiContentKind.Video:
+                    AddPoiVideoControl(content, entry.path, entry.displayName, hasArMap);
                     break;
                 case PoiContentKind.Image:
                     AddPoiImageContent(content, entry.path);
@@ -870,6 +880,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         {
             var hash = 17;
             hash = hash * 31 + (showMapPoiPins ? 1 : 0);
+            hash = hash * 31 + (IsDriveSyncing() ? 1 : 0);
             if (poiManager == null)
             {
                 return hash;
@@ -950,17 +961,31 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void HandleDriveSyncFinished(bool success)
     {
-        if (!success || !TryLoadSyncedMapUnderlay())
+        if (!success)
         {
+            if (tabIds[activeTab] == "M")
+            {
+                ShowTab(activeTab);
+            }
+
             return;
         }
 
-        ApplyMapUnderlayTexture();
+        if (TryLoadSyncedMapUnderlay())
+        {
+            ApplyMapUnderlayTexture();
+        }
+
+        if (tabIds[activeTab] == "M")
+        {
+            ShowTab(activeTab);
+        }
     }
 
     private void RefreshDynamicText()
     {
         UpdatePoiAudioPlayers();
+        UpdatePoiVideoPlayers();
 
         if (debugText != null)
         {
@@ -970,6 +995,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (navigationText != null)
         {
             navigationText.text = BuildNavigationText();
+        }
+
+        if (mapLoadingText != null)
+        {
+            mapLoadingText.text = BuildMapLoadingText();
+            mapLoadingText.gameObject.SetActive(IsDriveSyncing());
         }
     }
 
@@ -1007,6 +1038,18 @@ public sealed class DwaallichtAppController : MonoBehaviour
         AddCommandButton(panel, mapCalibrationMode ? "Cal on" : "Cal", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(88f, 6f), new Vector2(82f, 24f), () => SetMapCalibrationMode(true));
         AddCommandButton(panel, showMapPoiPins ? "Pins on" : "Pins off", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(176f, 6f), new Vector2(80f, 24f), ToggleMapPoiPins);
 #endif
+    }
+
+    private void AddMapLoadingIndicator(RectTransform parent)
+    {
+        if (!IsDriveSyncing())
+        {
+            return;
+        }
+
+        var panel = AddImage(parent, "MapLoadingPanel", TranslucentPaper, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-174f, -50f), new Vector2(164f, 38f));
+        panel.GetComponent<Image>().raycastTarget = false;
+        mapLoadingText = AddText(panel, BuildMapLoadingText(), 12, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Vector2(8f, 0f), new Vector2(-8f, 0f));
     }
 
     private void AddMapCalibrationControls(RectTransform parent)
@@ -1929,6 +1972,15 @@ public sealed class DwaallichtAppController : MonoBehaviour
                     displayName = StripNumericPrefix(Path.GetFileNameWithoutExtension(path))
                 });
             }
+            else if (IsPoiVideoExtension(extension))
+            {
+                entries.Add(new PoiContentEntry
+                {
+                    kind = PoiContentKind.Video,
+                    path = path,
+                    displayName = StripNumericPrefix(Path.GetFileNameWithoutExtension(path))
+                });
+            }
             else if (IsPoiImageExtension(extension))
             {
                 entries.Add(new PoiContentEntry
@@ -1948,6 +2000,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase)
             || string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPoiVideoExtension(string extension)
+    {
+        return string.Equals(extension, ".mp4", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string StripNumericPrefix(string value)
@@ -2077,6 +2134,199 @@ public sealed class DwaallichtAppController : MonoBehaviour
         image.raycastTarget = false;
     }
 
+    private void AddPoiVideoControl(RectTransform parent, string videoPath, string title, bool overCamera)
+    {
+        if (string.IsNullOrWhiteSpace(videoPath) || !File.Exists(videoPath))
+        {
+            return;
+        }
+
+        const float previewHeight = 178f;
+        const float controlsHeight = 190f;
+        var holder = AddImage(parent, "Video_" + title, overCamera ? TranslucentPaper : Paper, new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, previewHeight + controlsHeight));
+        var layoutElement = holder.gameObject.AddComponent<LayoutElement>();
+        layoutElement.preferredHeight = previewHeight + controlsHeight;
+        holder.GetComponent<Image>().raycastTarget = false;
+
+        var previewBackground = AddImage(holder, "PoiVideoPreviewBackground", Ink, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(12f, -previewHeight - 10f), new Vector2(-12f, -10f));
+        previewBackground.GetComponent<Image>().raycastTarget = false;
+        var preview = AddRawImage(holder, "PoiVideoPreview", null, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(12f, -previewHeight - 10f), new Vector2(-12f, -10f));
+        var previewImage = preview.GetComponent<RawImage>();
+        previewImage.color = Color.clear;
+
+        AddText(holder, title, 16, FontStyle.Bold, Ink, TextAnchor.UpperLeft, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(14f, 146f), new Vector2(-14f, 174f));
+
+        var buttonRect = AddImage(holder, "VideoPlayStop", Ink, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(14f, 102f), new Vector2(48f, 28f));
+        var buttonImage = buttonRect.GetComponent<Image>();
+        buttonImage.raycastTarget = true;
+        var button = buttonRect.gameObject.AddComponent<Button>();
+        button.targetGraphic = buttonImage;
+        var buttonLabel = AddText(buttonRect, "...", 14, FontStyle.Bold, Paper, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+
+        var track = AddImage(holder, "VideoProgressTrack", TranslucentInk, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(74f, 112f), new Vector2(-14f, 116f));
+        var fill = AddImage(track, "VideoProgressFill", Gold, Vector2.zero, new Vector2(0f, 1f), Vector2.zero, Vector2.zero);
+        fill.anchorMax = new Vector2(0f, 1f);
+        var statusText = AddText(holder, "Video laden...", 11, FontStyle.Normal, Ink, TextAnchor.UpperLeft, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(14f, 12f), new Vector2(-14f, 88f));
+        statusText.verticalOverflow = VerticalWrapMode.Truncate;
+
+        var playerGo = new GameObject("VideoPlayer_" + title);
+        playerGo.transform.SetParent(transform, false);
+        var videoPlayer = playerGo.AddComponent<VideoPlayer>();
+        videoPlayer.playOnAwake = false;
+        videoPlayer.isLooping = false;
+        videoPlayer.source = VideoSource.Url;
+        videoPlayer.url = BuildLocalMediaUrl(videoPath);
+        videoPlayer.renderMode = VideoRenderMode.APIOnly;
+        videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
+        videoPlayer.waitForFirstFrame = true;
+        videoPlayer.skipOnDrop = true;
+        videoPlayer.sendFrameReadyEvents = true;
+
+        var player = new PoiVideoPlayer
+        {
+            filePath = videoPath,
+            player = videoPlayer,
+            previewImage = previewImage,
+            progressFill = fill.GetComponent<Image>(),
+            buttonLabel = buttonLabel,
+            statusText = statusText,
+            loading = true,
+        };
+        poiVideoPlayers.Add(player);
+        videoPlayer.prepareCompleted += preparedPlayer =>
+        {
+            player.loading = false;
+            player.prepared = true;
+            ApplyPoiVideoTexture(player);
+        };
+        videoPlayer.frameReady += (_, __) => MarkPoiVideoFrameReady(player);
+        videoPlayer.errorReceived += (_, message) =>
+        {
+            player.loading = false;
+            player.loadFailed = true;
+            player.errorMessage = message;
+            ApplyPoiVideoStatus(player);
+            Debug.LogWarning($"[DwaallichtAppController] Could not load video {videoPath}: {message}");
+        };
+        button.onClick.AddListener(() => TogglePoiVideo(player));
+        videoPlayer.Prepare();
+    }
+
+    private void MarkPoiVideoFrameReady(PoiVideoPlayer player)
+    {
+        if (player == null)
+        {
+            return;
+        }
+
+        ApplyPoiVideoTexture(player);
+        player.loading = false;
+        player.frameReady = true;
+        ApplyPoiVideoStatus(player);
+    }
+
+    private void ApplyPoiVideoTexture(PoiVideoPlayer player)
+    {
+        if (player == null || player.player == null || player.previewImage == null || player.player.texture == null)
+        {
+            return;
+        }
+
+        player.previewImage.texture = player.player.texture;
+        player.previewImage.color = Color.white;
+        player.frameReady = true;
+    }
+
+    private void ApplyPoiVideoStatus(PoiVideoPlayer player)
+    {
+        if (player == null || player.statusText == null)
+        {
+            return;
+        }
+
+        if (player.loadFailed)
+        {
+            player.statusText.text = "Video kan niet worden afgespeeld.\n" + BuildPoiVideoFailureReason(player) + BuildPoiVideoDebugText(player);
+            player.statusText.color = Red;
+            return;
+        }
+
+        player.statusText.color = Ink;
+        if (player.loading)
+        {
+            player.statusText.text = "Video laden...";
+        }
+        else if (player.player != null && player.player.isPlaying)
+        {
+            player.statusText.text = "Video speelt af.";
+        }
+        else if (player.prepared)
+        {
+            player.statusText.text = "Klaar om af te spelen.";
+        }
+        else
+        {
+            player.statusText.text = "Video voorbereiden...";
+        }
+
+        player.statusText.text += BuildPoiVideoDebugText(player);
+    }
+
+    private string BuildPoiVideoFailureReason(PoiVideoPlayer player)
+    {
+        var message = player != null ? player.errorMessage : "";
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "Controleer de verbinding of probeer later opnieuw.";
+        }
+
+        var lower = message.ToLowerInvariant();
+        if (ContainsInvariant(lower, "codec") || ContainsInvariant(lower, "format") || ContainsInvariant(lower, "unsupported"))
+        {
+            return "Het videoformaat wordt niet ondersteund op dit toestel.";
+        }
+
+        if (ContainsInvariant(lower, "not found") || ContainsInvariant(lower, "cannot open") || ContainsInvariant(lower, "failed to open"))
+        {
+            return "Het videobestand kon niet worden geopend.";
+        }
+
+        return message;
+    }
+
+    private static bool ContainsInvariant(string haystack, string needle)
+    {
+        return !string.IsNullOrEmpty(haystack)
+            && !string.IsNullOrEmpty(needle)
+            && haystack.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private string BuildPoiVideoDebugText(PoiVideoPlayer player)
+    {
+        if (!showDeviceDebug || player == null || player.player == null)
+        {
+            return "";
+        }
+
+        var fileName = string.IsNullOrWhiteSpace(player.filePath) ? "-" : Path.GetFileName(player.filePath);
+        return $"\nDebug: {fileName} | prepared={player.player.isPrepared} frame={player.player.frame}";
+    }
+
+    private static string BuildLocalMediaUrl(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "";
+        }
+
+        if (path.Contains("://"))
+        {
+            return path;
+        }
+
+        return new Uri(path).AbsoluteUri;
+    }
+
     private bool TryLoadPoiImage(string imagePath, out Texture2D texture, out Sprite sprite)
     {
         texture = null;
@@ -2201,6 +2451,78 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
     }
 
+    private void TogglePoiVideo(PoiVideoPlayer player)
+    {
+        if (player == null || player.loadFailed || player.player == null)
+        {
+            ApplyPoiVideoStatus(player);
+            return;
+        }
+
+        if (!player.player.isPrepared)
+        {
+            player.loading = true;
+            ApplyPoiVideoStatus(player);
+            player.player.Prepare();
+            return;
+        }
+
+        if (player.player.isPlaying)
+        {
+            player.player.Pause();
+            ApplyPoiVideoStatus(player);
+            return;
+        }
+
+        for (var i = 0; i < poiVideoPlayers.Count; i++)
+        {
+            var other = poiVideoPlayers[i];
+            if (other != player && other.player != null && other.player.isPlaying)
+            {
+                other.player.Pause();
+                ApplyPoiVideoStatus(other);
+            }
+        }
+
+        player.player.Play();
+        ApplyPoiVideoStatus(player);
+    }
+
+    private void UpdatePoiVideoPlayers()
+    {
+        for (var i = 0; i < poiVideoPlayers.Count; i++)
+        {
+            var player = poiVideoPlayers[i];
+            if (player == null)
+            {
+                continue;
+            }
+
+            if (player.buttonLabel != null)
+            {
+                player.buttonLabel.text = player.loadFailed ? "Error" : player.loading ? "..." : player.player != null && player.player.isPlaying ? "Pauze" : "Play";
+            }
+
+            if (player.progressFill != null)
+            {
+                var amount = 0f;
+                if (player.player != null && player.player.isPrepared && player.player.length > 0.01)
+                {
+                    amount = Mathf.Clamp01((float)(player.player.time / player.player.length));
+                }
+
+                player.progressFill.rectTransform.anchorMax = new Vector2(amount, 1f);
+            }
+
+            if (player.player != null && player.player.texture != null)
+            {
+                ApplyPoiVideoTexture(player);
+            }
+
+            ApplyPoiVideoStatus(player);
+        }
+    }
+
     private void CleanupPoiAudioPlayers()
     {
         StopAllCoroutines();
@@ -2221,6 +2543,32 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         poiAudioPlayers.Clear();
+    }
+
+    private void CleanupPoiVideoPlayers()
+    {
+        for (var i = 0; i < poiVideoPlayers.Count; i++)
+        {
+            var player = poiVideoPlayers[i];
+            if (player == null)
+            {
+                continue;
+            }
+
+            if (player.player != null)
+            {
+                player.player.Stop();
+                Destroy(player.player.gameObject);
+            }
+
+            if (player.renderTexture != null)
+            {
+                player.renderTexture.Release();
+                Destroy(player.renderTexture);
+            }
+        }
+
+        poiVideoPlayers.Clear();
     }
 
     private void CleanupPoiImageAssets()
@@ -2321,6 +2669,20 @@ public sealed class DwaallichtAppController : MonoBehaviour
                $"lat {latLon.x:0.000000}  lon {latLon.y:0.000000}  poi {selected}";
     }
 
+    private bool IsDriveSyncing()
+    {
+        SubscribeToDriveSync();
+        return driveSync != null && driveSync.IsSyncing;
+    }
+
+    private string BuildMapLoadingText()
+    {
+        var status = driveSync != null && !string.IsNullOrWhiteSpace(driveSync.LastSyncStatus)
+            ? driveSync.LastSyncStatus
+            : "Pins laden";
+        return "Pins laden...\n" + status;
+    }
+
     private string BuildArScannerDebugText()
     {
         EnsureArScanner();
@@ -2406,11 +2768,28 @@ public sealed class DwaallichtAppController : MonoBehaviour
         public bool loadFailed;
     }
 
+    private sealed class PoiVideoPlayer
+    {
+        public string filePath;
+        public VideoPlayer player;
+        public RenderTexture renderTexture;
+        public RawImage previewImage;
+        public Image progressFill;
+        public Text buttonLabel;
+        public Text statusText;
+        public string errorMessage;
+        public bool loading;
+        public bool loadFailed;
+        public bool prepared;
+        public bool frameReady;
+    }
+
     private enum PoiContentKind
     {
         Ar,
         Text,
         Audio,
+        Video,
         Image
     }
 

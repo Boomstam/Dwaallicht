@@ -9,7 +9,7 @@ namespace Dwaallicht.Navigation
     [AddComponentMenu("Dwaallicht/Navigation/POI Manager")]
     public sealed class PoiManager : MonoBehaviour
     {
-        [SerializeField] private bool loadSavedPois = false;
+        [SerializeField] private bool loadSavedPois = true;
         [SerializeField] private bool loadSheetPois = true;
         [SerializeField] private string sheetFolderName = "DriveSync";
         [SerializeField] private string sheetFileName = "Points of Interest.csv";

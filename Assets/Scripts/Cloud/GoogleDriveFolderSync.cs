@@ -160,6 +160,16 @@ namespace Dwaallicht.Cloud
 
                 foreach (var file in page.files)
                 {
+                    if (file == null || string.IsNullOrWhiteSpace(file.id))
+                    {
+                        continue;
+                    }
+
+                    if (IsDriveFolder(file))
+                    {
+                        continue;
+                    }
+
                     if (downloadedFiles >= maxFilesPerRun)
                     {
                         syncIncomplete = true;
@@ -167,26 +177,7 @@ namespace Dwaallicht.Cloud
                         yield break;
                     }
 
-                    if (file == null || string.IsNullOrWhiteSpace(file.id))
-                    {
-                        continue;
-                    }
-
                     var safeName = SanitizeFileName(file.name);
-                    if (string.Equals(file.mimeType, GoogleFolderMimeType, StringComparison.Ordinal))
-                    {
-                        if (recursive)
-                        {
-                            yield return SyncDriveFolder(file.id, Path.Combine(localFolderPath, safeName));
-                            if (syncFailed)
-                            {
-                                yield break;
-                            }
-                        }
-
-                        continue;
-                    }
-
                     yield return DownloadDriveFile(file, localFolderPath, safeName);
                     if (syncFailed)
                     {
@@ -194,9 +185,32 @@ namespace Dwaallicht.Cloud
                     }
                 }
 
+                if (recursive)
+                {
+                    foreach (var file in page.files)
+                    {
+                        if (file == null || string.IsNullOrWhiteSpace(file.id) || !IsDriveFolder(file))
+                        {
+                            continue;
+                        }
+
+                        var safeName = SanitizeFileName(file.name);
+                        yield return SyncDriveFolder(file.id, Path.Combine(localFolderPath, safeName));
+                        if (syncFailed || syncIncomplete)
+                        {
+                            yield break;
+                        }
+                    }
+                }
+
                 nextPageToken = page.nextPageToken;
             }
             while (!string.IsNullOrEmpty(nextPageToken));
+        }
+
+        private static bool IsDriveFolder(DriveFile file)
+        {
+            return file != null && string.Equals(file.mimeType, GoogleFolderMimeType, StringComparison.Ordinal);
         }
 
         private IEnumerator DownloadDriveFile(DriveFile file, string localFolderPath, string safeName)

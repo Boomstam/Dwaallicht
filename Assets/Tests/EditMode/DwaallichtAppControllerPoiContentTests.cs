@@ -20,6 +20,7 @@ public sealed class DwaallichtAppControllerPoiContentTests
             File.WriteAllBytes(Path.Combine(folder, "2. Banana.png"), new byte[] { 1, 2, 3 });
             File.WriteAllText(Path.Combine(folder, "3. Middle Text.txt"), "Second");
             File.WriteAllBytes(Path.Combine(folder, "4. Sound.mp3"), new byte[] { 4, 5, 6 });
+            File.WriteAllBytes(Path.Combine(folder, "5. Clip.mp4"), new byte[] { 7, 8, 9 });
             File.WriteAllText(Path.Combine(folder, "10. End Text.txt"), "Last");
             File.WriteAllText(Path.Combine(folder, "Ignored.txt.meta"), "meta");
 
@@ -39,10 +40,12 @@ public sealed class DwaallichtAppControllerPoiContentTests
                 Assert.That(GetText(entries[3]), Is.EqualTo("Second"));
                 Assert.That(GetKind(entries[4]), Is.EqualTo("Audio"));
                 Assert.That(GetDisplayName(entries[4]), Is.EqualTo("Sound"));
-                Assert.That(GetKind(entries[5]), Is.EqualTo("Text"));
-                Assert.That(GetText(entries[5]), Is.EqualTo("Last"));
-                Assert.That(GetDisplayName(entries[5]), Is.EqualTo("End Text"));
-                Assert.That(entries, Has.Count.EqualTo(6));
+                Assert.That(GetKind(entries[5]), Is.EqualTo("Video"));
+                Assert.That(GetDisplayName(entries[5]), Is.EqualTo("Clip"));
+                Assert.That(GetKind(entries[6]), Is.EqualTo("Text"));
+                Assert.That(GetText(entries[6]), Is.EqualTo("Last"));
+                Assert.That(GetDisplayName(entries[6]), Is.EqualTo("End Text"));
+                Assert.That(entries, Has.Count.EqualTo(7));
             }
             finally
             {
