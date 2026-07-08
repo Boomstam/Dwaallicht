@@ -108,6 +108,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Text debugText;
     private Text navigationText;
     private Text headingText;
+    private RectTransform mapLoadingPanel;
     private Text mapLoadingText;
     private Text mapCalibrationText;
     private Text mapScaleBarText;
@@ -152,6 +153,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         if (driveSync != null)
         {
+            driveSync.StatusChanged -= HandleDriveSyncStatusChanged;
             driveSync.SyncFinished -= HandleDriveSyncFinished;
             driveSync = null;
         }
@@ -266,6 +268,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         debugText = null;
         navigationText = null;
         headingText = null;
+        mapLoadingPanel = null;
         mapLoadingText = null;
         mapViewport = null;
         mapContentRoot = null;
@@ -955,12 +958,20 @@ public sealed class DwaallichtAppController : MonoBehaviour
         driveSync = FindFirstObjectByType<GoogleDriveFolderSync>();
         if (driveSync != null)
         {
+            driveSync.StatusChanged += HandleDriveSyncStatusChanged;
             driveSync.SyncFinished += HandleDriveSyncFinished;
         }
     }
 
+    private void HandleDriveSyncStatusChanged(string status)
+    {
+        UpdateMapLoadingIndicator();
+    }
+
     private void HandleDriveSyncFinished(bool success)
     {
+        UpdateMapLoadingIndicator();
+
         if (!success)
         {
             if (tabIds[activeTab] == "M")
@@ -999,8 +1010,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         if (mapLoadingText != null)
         {
-            mapLoadingText.text = BuildMapLoadingText();
-            mapLoadingText.gameObject.SetActive(IsDriveSyncing());
+            UpdateMapLoadingIndicator();
         }
     }
 
@@ -1042,14 +1052,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void AddMapLoadingIndicator(RectTransform parent)
     {
-        if (!IsDriveSyncing())
-        {
-            return;
-        }
-
-        var panel = AddImage(parent, "MapLoadingPanel", TranslucentPaper, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-174f, -50f), new Vector2(164f, 38f));
-        panel.GetComponent<Image>().raycastTarget = false;
-        mapLoadingText = AddText(panel, BuildMapLoadingText(), 12, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Vector2(8f, 0f), new Vector2(-8f, 0f));
+        mapLoadingPanel = AddImage(parent, "MapLoadingPanel", TranslucentPaper, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-174f, -50f), new Vector2(164f, 38f));
+        mapLoadingPanel.GetComponent<Image>().raycastTarget = false;
+        mapLoadingText = AddText(mapLoadingPanel, BuildMapLoadingText(), 12, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Vector2(8f, 0f), new Vector2(-8f, 0f));
+        UpdateMapLoadingIndicator();
     }
 
     private void AddMapCalibrationControls(RectTransform parent)
@@ -2142,7 +2148,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         const float previewHeight = 178f;
-        const float controlsHeight = 190f;
+        const float controlsHeight = 230f;
         var holder = AddImage(parent, "Video_" + title, overCamera ? TranslucentPaper : Paper, new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, previewHeight + controlsHeight));
         var layoutElement = holder.gameObject.AddComponent<LayoutElement>();
         layoutElement.preferredHeight = previewHeight + controlsHeight;
@@ -2166,7 +2172,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var track = AddImage(holder, "VideoProgressTrack", TranslucentInk, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(74f, 112f), new Vector2(-14f, 116f));
         var fill = AddImage(track, "VideoProgressFill", Gold, Vector2.zero, new Vector2(0f, 1f), Vector2.zero, Vector2.zero);
         fill.anchorMax = new Vector2(0f, 1f);
-        var statusText = AddText(holder, "Video laden...", 11, FontStyle.Normal, Ink, TextAnchor.UpperLeft, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(14f, 12f), new Vector2(-14f, 88f));
+        var statusText = AddText(holder, "Video laden...", 10, FontStyle.Normal, Ink, TextAnchor.UpperLeft, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(14f, 12f), new Vector2(-14f, 128f));
         statusText.verticalOverflow = VerticalWrapMode.Truncate;
 
         var playerGo = new GameObject("VideoPlayer_" + title);
@@ -2175,7 +2181,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
         videoPlayer.playOnAwake = false;
         videoPlayer.isLooping = false;
         videoPlayer.source = VideoSource.Url;
-        videoPlayer.url = BuildLocalMediaUrl(videoPath);
+        var videoUrl = BuildLocalMediaUrl(videoPath);
+        videoPlayer.url = videoUrl;
         videoPlayer.renderMode = VideoRenderMode.APIOnly;
         videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
         videoPlayer.waitForFirstFrame = true;
@@ -2185,6 +2192,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var player = new PoiVideoPlayer
         {
             filePath = videoPath,
+            url = videoUrl,
             player = videoPlayer,
             previewImage = previewImage,
             progressFill = fill.GetComponent<Image>(),
@@ -2193,11 +2201,13 @@ public sealed class DwaallichtAppController : MonoBehaviour
             loading = true,
         };
         poiVideoPlayers.Add(player);
+        Debug.Log("[DwaallichtAppController] Preparing video:\n" + BuildPoiVideoLogDetails(player));
         videoPlayer.prepareCompleted += preparedPlayer =>
         {
             player.loading = false;
             player.prepared = true;
             ApplyPoiVideoTexture(player);
+            Debug.Log("[DwaallichtAppController] Prepared video:\n" + BuildPoiVideoLogDetails(player));
         };
         videoPlayer.frameReady += (_, __) => MarkPoiVideoFrameReady(player);
         videoPlayer.errorReceived += (_, message) =>
@@ -2206,7 +2216,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
             player.loadFailed = true;
             player.errorMessage = message;
             ApplyPoiVideoStatus(player);
-            Debug.LogWarning($"[DwaallichtAppController] Could not load video {videoPath}: {message}");
+            Debug.LogWarning("[DwaallichtAppController] Could not load video:\n" + BuildPoiVideoLogDetails(player));
         };
         button.onClick.AddListener(() => TogglePoiVideo(player));
         videoPlayer.Prepare();
@@ -2246,7 +2256,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         if (player.loadFailed)
         {
-            player.statusText.text = "Video kan niet worden afgespeeld.\n" + BuildPoiVideoFailureReason(player) + BuildPoiVideoDebugText(player);
+            player.statusText.text = "Video kan niet worden afgespeeld.\n" + BuildPoiVideoFailureReason(player) + BuildPoiVideoErrorDebugText(player);
             player.statusText.color = Red;
             return;
         }
@@ -2309,7 +2319,137 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         var fileName = string.IsNullOrWhiteSpace(player.filePath) ? "-" : Path.GetFileName(player.filePath);
-        return $"\nDebug: {fileName} | prepared={player.player.isPrepared} frame={player.player.frame}";
+        return $"\nDebug: {fileName} | {GetPoiVideoSourceLabel(player.filePath)} | prepared={player.player.isPrepared} frame={player.player.frame}";
+    }
+
+    private string BuildPoiVideoErrorDebugText(PoiVideoPlayer player)
+    {
+        if (player == null || player.player == null)
+        {
+            return "";
+        }
+
+        var fileName = string.IsNullOrWhiteSpace(player.filePath) ? "-" : Path.GetFileName(player.filePath);
+        return "\n" +
+               $"Raw: {AbbreviateMiddle(player.errorMessage, 96)}\n" +
+               $"File: {fileName} | {GetPoiVideoSourceLabel(player.filePath)} | {FormatFileSize(GetFileSize(player.filePath))}\n" +
+               $"Player: prepared={player.player.isPrepared} frame={player.player.frame} frameCount={player.player.frameCount} length={player.player.length:0.##}\n" +
+               $"Device: {AbbreviateMiddle(SystemInfo.deviceModel, 42)}";
+    }
+
+    private string BuildPoiVideoLogDetails(PoiVideoPlayer player)
+    {
+        if (player == null)
+        {
+            return "player=null";
+        }
+
+        var videoPlayer = player.player;
+        return
+            $"error={player.errorMessage ?? ""}\n" +
+            $"path={player.filePath ?? ""}\n" +
+            $"url={player.url ?? ""}\n" +
+            $"source={GetPoiVideoSourceLabel(player.filePath)}\n" +
+            $"exists={File.Exists(player.filePath)} size={GetFileSize(player.filePath)} lastWriteUtc={GetFileLastWriteUtc(player.filePath)}\n" +
+            $"prepared={(videoPlayer != null && videoPlayer.isPrepared)} playing={(videoPlayer != null && videoPlayer.isPlaying)} frame={(videoPlayer != null ? videoPlayer.frame : -1)} frameCount={(videoPlayer != null ? videoPlayer.frameCount : 0)} length={(videoPlayer != null ? videoPlayer.length : 0):0.###}\n" +
+            $"renderMode={(videoPlayer != null ? videoPlayer.renderMode.ToString() : "-")} audioMode={(videoPlayer != null ? videoPlayer.audioOutputMode.ToString() : "-")}\n" +
+            $"platform={Application.platform} device={SystemInfo.deviceModel} os={SystemInfo.operatingSystem} graphics={SystemInfo.graphicsDeviceType}";
+    }
+
+    private string GetPoiVideoSourceLabel(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "unknown";
+        }
+
+        if (IsPathUnder(path, Application.persistentDataPath))
+        {
+            return "persistentData";
+        }
+
+        if (IsPathUnder(path, Application.streamingAssetsPath))
+        {
+            return "streamingAssets";
+        }
+
+        return "external";
+    }
+
+    private static bool IsPathUnder(string path, string root)
+    {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root))
+        {
+            return false;
+        }
+
+        var normalizedPath = NormalizePathForCompare(path);
+        var normalizedRoot = NormalizePathForCompare(root).TrimEnd('/');
+        return normalizedPath.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase)
+            || normalizedPath.StartsWith(normalizedRoot + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizePathForCompare(string path)
+    {
+        return (path ?? "").Replace('\\', '/');
+    }
+
+    private static long GetFileSize(string path)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(path) && File.Exists(path) ? new FileInfo(path).Length : -1;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
+    private static string GetFileLastWriteUtc(string path)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(path) && File.Exists(path)
+                ? File.GetLastWriteTimeUtc(path).ToString("yyyy-MM-dd HH:mm:ss")
+                : "-";
+        }
+        catch
+        {
+            return "-";
+        }
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 0)
+        {
+            return "missing";
+        }
+
+        if (bytes < 1024)
+        {
+            return bytes + " B";
+        }
+
+        if (bytes < 1024 * 1024)
+        {
+            return (bytes / 1024f).ToString("0.#") + " KB";
+        }
+
+        return (bytes / (1024f * 1024f)).ToString("0.##") + " MB";
+    }
+
+    private static string AbbreviateMiddle(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || maxLength <= 3 || value.Length <= maxLength)
+        {
+            return value ?? "";
+        }
+
+        var keepStart = (maxLength - 3) / 2;
+        var keepEnd = maxLength - 3 - keepStart;
+        return value.Substring(0, keepStart) + "..." + value.Substring(value.Length - keepEnd);
     }
 
     private static string BuildLocalMediaUrl(string path)
@@ -2324,7 +2464,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return path;
         }
 
+#if UNITY_ANDROID && !UNITY_EDITOR
+        return path;
+#else
         return new Uri(path).AbsoluteUri;
+#endif
     }
 
     private bool TryLoadPoiImage(string imagePath, out Texture2D texture, out Sprite sprite)
@@ -2683,6 +2827,22 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return "Pins laden...\n" + status;
     }
 
+    private void UpdateMapLoadingIndicator()
+    {
+        if (mapLoadingPanel == null)
+        {
+            return;
+        }
+
+        var syncing = IsDriveSyncing();
+        if (mapLoadingText != null)
+        {
+            mapLoadingText.text = BuildMapLoadingText();
+        }
+
+        mapLoadingPanel.gameObject.SetActive(syncing);
+    }
+
     private string BuildArScannerDebugText()
     {
         EnsureArScanner();
@@ -2771,6 +2931,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private sealed class PoiVideoPlayer
     {
         public string filePath;
+        public string url;
         public VideoPlayer player;
         public RenderTexture renderTexture;
         public RawImage previewImage;

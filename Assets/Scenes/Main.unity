@@ -305,9 +305,9 @@ MonoBehaviour:
   syncIntoStreamingAssetsInEditor: 1
   syncOnStart: 1
   forceDownload: 0
-  maxFilesPerRun: 25
+  maxFilesPerRun: 200
   pageSize: 50
-  maxBytesPerFile: 5242880
+  maxBytesPerFile: 104857600
 --- !u!4 &887553531
 Transform:
   m_ObjectHideFlags: 0

@@ -32,10 +32,10 @@ namespace Dwaallicht.Cloud
         [SerializeField] private bool syncOnStart;
         [SerializeField] private bool forceDownload;
 
-        [Header("Testing Limits")]
-        [SerializeField, Min(1)] private int maxFilesPerRun = 25;
+        [Header("Sync Limits")]
+        [SerializeField, Min(1)] private int maxFilesPerRun = 200;
         [SerializeField, Min(1)] private int pageSize = 50;
-        [SerializeField, Min(1024)] private long maxBytesPerFile = 5 * 1024 * 1024;
+        [SerializeField, Min(1024)] private long maxBytesPerFile = 100 * 1024 * 1024;
 
         private readonly Dictionary<string, ManifestEntry> manifestByLocalPath = new Dictionary<string, ManifestEntry>();
         private readonly Dictionary<string, ManifestEntry> manifestByDriveId = new Dictionary<string, ManifestEntry>();

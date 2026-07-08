@@ -85,13 +85,6 @@
             "exportMimeType": "text/plain"
         },
         {
-            "driveId": "1LdemsAOW5My_Xytcij073YraCxrOhdeV",
-            "localPath": "Rupelbrug/5. Rick Astley.png",
-            "modifiedTime": "2026-07-08T15:57:14.266Z",
-            "md5Checksum": "8893713704fe7dbb56a094484ff8d536",
-            "exportMimeType": ""
-        },
-        {
             "driveId": "1jTXKlKNwyq567MYsLipi_AUbDqm4AnybfK2cJWez06g",
             "localPath": "Schorre vijver schiereiland/Text 2.txt",
             "modifiedTime": "2026-07-08T16:01:05.868Z",
@@ -103,6 +96,13 @@
             "localPath": "Spoorwegbrug/1. Salad Fingers.mp4",
             "modifiedTime": "2026-07-08T19:03:07.000Z",
             "md5Checksum": "03d0cd4db3b87e5689b90c941bf5b9d2",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1tnj2vj2_-YaXfSVuCCZM6uxjjXj7KAqx",
+            "localPath": "Rupelbrug/Never Gonna Give Your Teen Spirit up.mp4",
+            "modifiedTime": "2026-07-08T19:37:38.000Z",
+            "md5Checksum": "b1142ad845a3464e7a839a84ea3251fc",
             "exportMimeType": ""
         }
     ]
