@@ -36,6 +36,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float MapMinScaleBarMeters = 10f;
     private const float MapMaxScaleBarMeters = 500f;
     private const float MapCalibrationHandleRadius = 34f;
+    private const float MapClickMoveThresholdPixels = 12f;
     private const string PoiTextFileStem = "Text";
     private const string PoiArFolderName = "AR";
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
@@ -113,12 +114,14 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Texture2D syncedMapUnderlayTexture;
     private Vector2 lastMapDragLocalPosition;
     private Vector2 lastMapViewDragLocalPosition;
+    private Vector2 mapEmptyClickStartScreenPosition;
     private Vector2 mapViewOffsetPixels;
     private float mapViewZoomMultiplier = 1f;
     private float lastMapPinchDistance;
     private bool isDraggingMapUnderlay;
     private bool isDraggingMapView;
     private bool isPinchingMapView;
+    private bool isMapEmptyClickCandidate;
     private int activeMapCalibrationHandle = -1;
     private RectTransform[] mapCalibrationHandleRects;
 
@@ -255,6 +258,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         isDraggingMapUnderlay = false;
         isDraggingMapView = false;
         isPinchingMapView = false;
+        isMapEmptyClickCandidate = false;
         activeMapCalibrationHandle = -1;
 
         switch (tabIds[activeTab])
@@ -1044,6 +1048,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         {
             isDraggingMapView = false;
             isPinchingMapView = false;
+            isMapEmptyClickCandidate = false;
             return;
         }
 
@@ -1069,16 +1074,33 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         if (Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointerDown(out var pointerPosition)
-            && !IsPointerOverMapControl(pointerPosition)
-            && RectTransformUtility.RectangleContainsScreenPoint(mapViewport, pointerPosition)
-            && RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out lastMapViewDragLocalPosition))
+            && RectTransformUtility.RectangleContainsScreenPoint(mapViewport, pointerPosition))
         {
-            isDraggingMapView = true;
+            var pointerOverButton = IsPointerOverAnyButton(pointerPosition);
+            isMapEmptyClickCandidate = !pointerOverButton;
+            mapEmptyClickStartScreenPosition = pointerPosition;
+
+            if (!IsPointerOverMapControl(pointerPosition)
+                && RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out lastMapViewDragLocalPosition))
+            {
+                isDraggingMapView = true;
+            }
         }
 
         if (Dwaallicht.Input.DwaallichtInput.PrimaryPointerReleasedThisFrame())
         {
+            if (isMapEmptyClickCandidate && poiManager != null && poiManager.SelectedPoi != null)
+            {
+                var releasePosition = GetCurrentPointerScreenPosition();
+                if (Vector2.Distance(mapEmptyClickStartScreenPosition, releasePosition) <= MapClickMoveThresholdPixels)
+                {
+                    poiManager.SelectPoi((PointOfInterest)null);
+                    ShowTab(activeTab);
+                }
+            }
+
             isDraggingMapView = false;
+            isMapEmptyClickCandidate = false;
         }
 
         if (!isDraggingMapView || !Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointer(out pointerPosition))
@@ -1177,6 +1199,45 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         return false;
+    }
+
+    private bool IsPointerOverAnyButton(Vector2 screenPosition)
+    {
+        if (EventSystem.current == null)
+        {
+            return false;
+        }
+
+        var eventData = new PointerEventData(EventSystem.current)
+        {
+            position = screenPosition,
+        };
+        var results = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(eventData, results);
+        for (var i = 0; i < results.Count; i++)
+        {
+            if (results[i].gameObject.GetComponentInParent<Button>() != null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private Vector2 GetCurrentPointerScreenPosition()
+    {
+        if (Mouse.current != null)
+        {
+            return Mouse.current.position.ReadValue();
+        }
+
+        if (Touchscreen.current != null)
+        {
+            return Touchscreen.current.primaryTouch.position.ReadValue();
+        }
+
+        return mapEmptyClickStartScreenPosition;
     }
 
     private void NudgeMapUnderlay(Vector2 deltaPixels)
@@ -1519,15 +1580,22 @@ public sealed class DwaallichtAppController : MonoBehaviour
                 continue;
             }
 
-            var isSelected = poiManager.SelectedPoi == poi;
+            var isSelected = IsSelectedPoi(poi);
             var position = MapLatLonToAnchoredPosition(poi.LatLon);
             var pin = AddPin(map, poi.color, position, isSelected ? 38f : 30f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             var button = pin.gameObject.AddComponent<Button>();
             button.targetGraphic = pin.GetComponent<Graphic>();
             button.onClick.AddListener(() =>
             {
-                poiManager.SelectPoi(poi);
-                ShowTab(activeTab);
+                if (IsSelectedPoi(poi))
+                {
+                    ShowTab(3);
+                }
+                else
+                {
+                    poiManager.SelectPoi(poi);
+                    ShowTab(activeTab);
+                }
             });
         }
     }
@@ -1548,8 +1616,26 @@ public sealed class DwaallichtAppController : MonoBehaviour
         button.onClick.AddListener(() => ShowTab(3));
 
         AddText(card, title, 15, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Vector2(10f, 0f), new Vector2(-10f, 0f));
-        AddCircle(map, "SelectedPoiRing", Color.clear, Vector2.one * 56f, pinPosition + new Vector2(0f, 4f), false, Gold, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        var ring = AddCircle(map, "SelectedPoiRing", Color.clear, Vector2.one * 56f, pinPosition + new Vector2(0f, 4f), false, Gold, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        ring.GetComponent<Graphic>().raycastTarget = false;
         card.SetAsLastSibling();
+    }
+
+    private bool IsSelectedPoi(PointOfInterest poi)
+    {
+        var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
+        if (selectedPoi == null || poi == null)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(selectedPoi, poi))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrEmpty(selectedPoi.id)
+            && string.Equals(selectedPoi.id, poi.id, StringComparison.Ordinal);
     }
 
     private bool SelectedPoiHasArMap()
