@@ -1484,12 +1484,20 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return Vector2.zero;
         }
 
-        return new Vector2(texture.width, texture.height) * mapZoomMultiplier;
+        var sizeTexture = GetMapUnderlaySizeTexture(texture);
+        return new Vector2(sizeTexture.width, sizeTexture.height) * mapZoomMultiplier;
     }
 
     private Texture2D GetActiveMapUnderlayTexture()
     {
         return syncedMapUnderlayTexture != null ? syncedMapUnderlayTexture : mapUnderlayTexture;
+    }
+
+    private Texture2D GetMapUnderlaySizeTexture(Texture2D activeTexture)
+    {
+        return syncedMapUnderlayTexture != null && mapUnderlayTexture != null
+            ? mapUnderlayTexture
+            : activeTexture;
     }
 
     private float GetScaleBarMeters()
