@@ -35,7 +35,11 @@ namespace Dwaallicht.Navigation
             var loadedSheetPois = loadSheetPois && TryLoadSheetPois();
             if (!loadedSheetPois && pois.Count == 0)
             {
+#if UNITY_EDITOR
                 SeedDefaults();
+#else
+                Debug.LogWarning("[PoiManager] No POI sheet loaded at startup; waiting for synced POIs.");
+#endif
             }
 
             foreach (var poi in pois)
