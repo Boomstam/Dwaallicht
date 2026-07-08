@@ -38,9 +38,13 @@ namespace Dwaallicht.Cloud
         [SerializeField, Min(1024)] private long maxBytesPerFile = 5 * 1024 * 1024;
 
         private readonly Dictionary<string, ManifestEntry> manifestByLocalPath = new Dictionary<string, ManifestEntry>();
+        private readonly Dictionary<string, ManifestEntry> manifestByDriveId = new Dictionary<string, ManifestEntry>();
+        private readonly HashSet<string> seenRelativePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private SyncManifest manifest = new SyncManifest();
         private int downloadedFiles;
+        private int deletedFiles;
         private bool syncFailed;
+        private bool syncIncomplete;
 
         public enum AuthMode
         {
@@ -98,7 +102,10 @@ namespace Dwaallicht.Cloud
 
             IsSyncing = true;
             syncFailed = false;
+            syncIncomplete = false;
             downloadedFiles = 0;
+            deletedFiles = 0;
+            seenRelativePaths.Clear();
 
             var rootPath = GetLocalRootPath();
             Directory.CreateDirectory(rootPath);
@@ -109,9 +116,23 @@ namespace Dwaallicht.Cloud
 
             if (!syncFailed)
             {
+                if (!syncIncomplete)
+                {
+                    DeleteStaleManagedFiles(rootPath);
+                    DeleteEmptyDirectories(rootPath);
+                }
+
+                if (syncFailed)
+                {
+                    IsSyncing = false;
+                    SyncFinished?.Invoke(false);
+                    yield break;
+                }
+
                 SaveManifest(rootPath);
                 RefreshAssetDatabaseIfNeeded(rootPath);
-                SetStatus($"Google Drive sync complete. Downloaded {downloadedFiles} file(s) to {rootPath}.");
+                var incompleteSuffix = syncIncomplete ? " Stale-file deletion skipped because the run did not traverse the full Drive folder." : "";
+                SetStatus($"Google Drive sync complete. Downloaded {downloadedFiles} file(s), deleted {deletedFiles} stale file(s) in {rootPath}.{incompleteSuffix}");
             }
 
             IsSyncing = false;
@@ -141,6 +162,7 @@ namespace Dwaallicht.Cloud
                 {
                     if (downloadedFiles >= maxFilesPerRun)
                     {
+                        syncIncomplete = true;
                         SetStatus($"Reached test sync limit of {maxFilesPerRun} file(s).");
                         yield break;
                     }
@@ -189,9 +211,15 @@ namespace Dwaallicht.Cloud
             var localFileName = export.canExport ? EnsureExtension(safeName, export.extension) : safeName;
             var localPath = Path.Combine(localFolderPath, localFileName);
             var relativePath = ToRelativeLocalPath(localPath);
+            PrepareManifestForRemoteFile(file, relativePath);
+            if (syncFailed)
+            {
+                yield break;
+            }
 
             if (!ShouldDownload(file, relativePath, localPath, export.mimeType))
             {
+                MarkRemoteFileSynced(file, relativePath, export.mimeType);
                 yield break;
             }
 
@@ -223,14 +251,41 @@ namespace Dwaallicht.Cloud
             File.WriteAllBytes(localPath, bytes);
             downloadedFiles++;
 
+            MarkRemoteFileSynced(file, relativePath, export.mimeType);
+        }
+
+        private void PrepareManifestForRemoteFile(DriveFile file, string relativePath)
+        {
+            if (manifestByDriveId.TryGetValue(file.id, out var previousEntry)
+                && !string.Equals(previousEntry.localPath, relativePath, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!DeleteManagedLocalFile(previousEntry.localPath, "renamed"))
+                {
+                    return;
+                }
+
+                manifestByLocalPath.Remove(previousEntry.localPath);
+            }
+
+            if (manifestByLocalPath.TryGetValue(relativePath, out var pathEntry)
+                && !string.Equals(pathEntry.driveId, file.id, StringComparison.Ordinal))
+            {
+                manifestByDriveId.Remove(pathEntry.driveId);
+            }
+        }
+
+        private void MarkRemoteFileSynced(DriveFile file, string relativePath, string exportMimeType)
+        {
+            seenRelativePaths.Add(relativePath);
             manifestByLocalPath[relativePath] = new ManifestEntry
             {
                 driveId = file.id,
                 localPath = relativePath,
                 modifiedTime = file.modifiedTime,
                 md5Checksum = file.md5Checksum,
-                exportMimeType = export.mimeType
+                exportMimeType = exportMimeType
             };
+            manifestByDriveId[file.id] = manifestByLocalPath[relativePath];
         }
 
         private IEnumerator RequestJson<T>(string url, Action<T> onSuccess)
@@ -362,13 +417,23 @@ namespace Dwaallicht.Cloud
                 return true;
             }
 
-            return !string.IsNullOrEmpty(file.md5Checksum)
-                && !string.Equals(entry.md5Checksum, file.md5Checksum, StringComparison.Ordinal);
+            if (file.IsGoogleWorkspaceFile)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(file.md5Checksum) || string.IsNullOrEmpty(entry.md5Checksum))
+            {
+                return true;
+            }
+
+            return !string.Equals(entry.md5Checksum, file.md5Checksum, StringComparison.Ordinal);
         }
 
         private void LoadManifest(string rootPath)
         {
             manifestByLocalPath.Clear();
+            manifestByDriveId.Clear();
             manifest = new SyncManifest();
 
             var manifestPath = Path.Combine(rootPath, ManifestFileName);
@@ -390,6 +455,10 @@ namespace Dwaallicht.Cloud
                     if (entry != null && !string.IsNullOrEmpty(entry.localPath))
                     {
                         manifestByLocalPath[entry.localPath] = entry;
+                        if (!string.IsNullOrEmpty(entry.driveId))
+                        {
+                            manifestByDriveId[entry.driveId] = entry;
+                        }
                     }
                 }
             }
@@ -405,6 +474,96 @@ namespace Dwaallicht.Cloud
             manifest.files.Clear();
             manifest.files.AddRange(manifestByLocalPath.Values);
             File.WriteAllText(Path.Combine(rootPath, ManifestFileName), JsonUtility.ToJson(manifest, true));
+        }
+
+        private void DeleteStaleManagedFiles(string rootPath)
+        {
+            var stalePaths = new List<string>();
+            foreach (var entry in manifestByLocalPath.Values)
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.localPath))
+                {
+                    continue;
+                }
+
+                if (!seenRelativePaths.Contains(entry.localPath))
+                {
+                    stalePaths.Add(entry.localPath);
+                }
+            }
+
+            foreach (var relativePath in stalePaths)
+            {
+                if (!DeleteManagedLocalFile(relativePath, "removed from Drive"))
+                {
+                    return;
+                }
+
+                if (manifestByLocalPath.TryGetValue(relativePath, out var entry) && entry != null)
+                {
+                    manifestByDriveId.Remove(entry.driveId);
+                }
+
+                manifestByLocalPath.Remove(relativePath);
+            }
+        }
+
+        private bool DeleteManagedLocalFile(string relativePath, string reason)
+        {
+            var localPath = Path.Combine(GetLocalRootPath(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(localPath))
+            {
+                return true;
+            }
+
+            try
+            {
+                File.Delete(localPath);
+                deletedFiles++;
+                SetStatus($"Deleted stale synced file ({reason}): {relativePath}.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Fail($"Could not delete stale synced file {relativePath}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private void DeleteEmptyDirectories(string rootPath)
+        {
+            if (syncFailed || !Directory.Exists(rootPath))
+            {
+                return;
+            }
+
+            var directories = new List<string>(Directory.GetDirectories(rootPath, "*", SearchOption.AllDirectories));
+            directories.Sort((left, right) => right.Length.CompareTo(left.Length));
+
+            foreach (var directory in directories)
+            {
+                TryDeleteEmptyDirectory(directory);
+            }
+        }
+
+        private void TryDeleteEmptyDirectory(string directory)
+        {
+            if (syncFailed || !Directory.Exists(directory))
+            {
+                return;
+            }
+
+            try
+            {
+                if (Directory.GetFiles(directory).Length == 0 && Directory.GetDirectories(directory).Length == 0)
+                {
+                    Directory.Delete(directory);
+                }
+            }
+            catch (Exception ex)
+            {
+                Fail($"Could not delete empty synced folder {directory}: {ex.Message}");
+            }
         }
 
         private string GetLocalRootPath()
