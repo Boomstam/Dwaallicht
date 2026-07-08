@@ -103,19 +103,15 @@ namespace Dwaallicht.AR
 
             if (arCameraBackground != null)
             {
-                arCameraBackground.enabled = active && lastCameraViewportVisible;
-            }
-
-            if (arCamera != null)
-            {
-                arCamera.enabled = active && lastCameraViewportVisible;
-                arCamera.rect = lastCameraViewportVisible ? lastCameraViewport : new Rect(0f, 0f, 0.001f, 0.001f);
+                arCameraBackground.enabled = false;
             }
 
             if (appCamera != null)
             {
                 appCamera.enabled = !active;
             }
+
+            ApplyCameraState();
 
             if (active)
             {
@@ -134,30 +130,21 @@ namespace Dwaallicht.AR
         {
             ResolveReferences();
 
-            normalizedViewport.x = Mathf.Clamp01(normalizedViewport.x);
-            normalizedViewport.y = Mathf.Clamp01(normalizedViewport.y);
-            normalizedViewport.width = Mathf.Clamp01(normalizedViewport.width);
-            normalizedViewport.height = Mathf.Clamp01(normalizedViewport.height);
-            visible = visible && normalizedViewport.width > 0.001f && normalizedViewport.height > 0.001f;
+            normalizedViewport = ClampNormalizedViewport(normalizedViewport);
+            visible = visible && IsViewportRenderable(normalizedViewport);
 
-            var changed = visible != lastCameraViewportVisible || !Approximately(normalizedViewport, lastCameraViewport);
+            var changed = visible != lastCameraViewportVisible || (visible && !Approximately(normalizedViewport, lastCameraViewport));
             lastCameraViewportVisible = visible;
-            lastCameraViewport = normalizedViewport;
-
-            if (arCamera != null)
+            if (visible)
             {
-                arCamera.rect = visible ? normalizedViewport : new Rect(0f, 0f, 0.001f, 0.001f);
-                arCamera.enabled = scanningActive && visible;
+                lastCameraViewport = normalizedViewport;
             }
 
-            if (arCameraBackground != null)
-            {
-                arCameraBackground.enabled = scanningActive && visible;
-            }
+            ApplyCameraState();
 
             if (changed)
             {
-                Debug.Log($"[DwaallichtArScanner] AR viewport visible={visible} rect={normalizedViewport}");
+                Debug.Log($"[DwaallichtArScanner] AR viewport visible={visible} rect={(visible ? normalizedViewport : lastCameraViewport)}");
             }
         }
 
@@ -166,10 +153,7 @@ namespace Dwaallicht.AR
             lastCameraViewport = new Rect(0f, 0f, 1f, 1f);
             lastCameraViewportVisible = true;
 
-            if (arCamera != null)
-            {
-                arCamera.rect = lastCameraViewport;
-            }
+            ApplyCameraState();
         }
 
         internal void ShowCubeAt(Transform anchor)
@@ -391,6 +375,45 @@ namespace Dwaallicht.AR
             {
                 arCameraManager.enabled = true;
             }
+        }
+
+        private void ApplyCameraState()
+        {
+            var cameraVisible = scanningActive && lastCameraViewportVisible && IsViewportRenderable(lastCameraViewport);
+
+            if (arCamera != null)
+            {
+                if (cameraVisible)
+                {
+                    arCamera.rect = lastCameraViewport;
+                }
+
+                arCamera.enabled = cameraVisible;
+            }
+
+            if (arCameraBackground != null)
+            {
+                arCameraBackground.enabled = cameraVisible;
+            }
+        }
+
+        private static Rect ClampNormalizedViewport(Rect viewport)
+        {
+            var xMin = Mathf.Clamp01(Mathf.Min(viewport.xMin, viewport.xMax));
+            var yMin = Mathf.Clamp01(Mathf.Min(viewport.yMin, viewport.yMax));
+            var xMax = Mathf.Clamp01(Mathf.Max(viewport.xMin, viewport.xMax));
+            var yMax = Mathf.Clamp01(Mathf.Max(viewport.yMin, viewport.yMax));
+            return xMax <= xMin || yMax <= yMin ? Rect.zero : Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+        }
+
+        private static bool IsViewportRenderable(Rect viewport)
+        {
+            if (viewport.width <= 0f || viewport.height <= 0f || Screen.width <= 0 || Screen.height <= 0)
+            {
+                return false;
+            }
+
+            return viewport.width * Screen.width >= 1f && viewport.height * Screen.height >= 1f;
         }
 
         private void ResolveReferences()

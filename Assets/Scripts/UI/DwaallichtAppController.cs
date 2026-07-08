@@ -314,6 +314,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
         EnsureArScanner();
         if (arScanner != null)
         {
+            Canvas.ForceUpdateCanvases();
+            if (scanActive)
+            {
+                UpdateArCameraViewport();
+            }
+
             arScanner.SetScanningActive(scanActive);
             if (!scanActive)
             {
@@ -497,6 +503,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var scrollRect = viewport.gameObject.AddComponent<ScrollRect>();
         scrollRect.horizontal = false;
         scrollRect.vertical = true;
+        scrollRect.inertia = !hasArMap;
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
 
         var content = AddRect(viewport, "PoiDetailContent", new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 0f), new Vector2(0f, 1f));
@@ -2058,7 +2065,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         if (!TryGetClippedScreenRect(arScrollScene, poiDetailScrollViewport, out var screenRect))
         {
-            arScanner.SetCameraViewport(new Rect(0f, 0f, 0.001f, 0.001f), false);
+            arScanner.SetCameraViewport(Rect.zero, false);
             return;
         }
 
@@ -2081,7 +2088,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var targetRect = GetScreenRect(target);
         var clipRect = GetScreenRect(clip);
         var screenRect = new Rect(0f, 0f, Screen.width, Screen.height);
-        clippedRect = IntersectRects(IntersectRects(targetRect, clipRect), screenRect);
+        clippedRect = PixelAlignScreenRect(IntersectRects(IntersectRects(targetRect, clipRect), screenRect));
         return clippedRect.width > 1f && clippedRect.height > 1f;
     }
 
@@ -2113,11 +2120,30 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return xMax <= xMin || yMax <= yMin ? Rect.zero : Rect.MinMaxRect(xMin, yMin, xMax, yMax);
     }
 
+    private static Rect PixelAlignScreenRect(Rect rect)
+    {
+        if (rect.width <= 0f || rect.height <= 0f)
+        {
+            return Rect.zero;
+        }
+
+        var xMin = Mathf.Clamp(Mathf.Round(rect.xMin), 0f, Screen.width);
+        var yMin = Mathf.Clamp(Mathf.Round(rect.yMin), 0f, Screen.height);
+        var xMax = Mathf.Clamp(Mathf.Round(rect.xMax), 0f, Screen.width);
+        var yMax = Mathf.Clamp(Mathf.Round(rect.yMax), 0f, Screen.height);
+        return xMax <= xMin || yMax <= yMin ? Rect.zero : Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+    }
+
     private RectTransform AddArScrollScene(RectTransform parent)
     {
         var scene = AddRect(parent, "ArScrollScene", new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, PoiDetailArSceneHeight));
         var layoutElement = scene.gameObject.AddComponent<LayoutElement>();
         layoutElement.preferredHeight = PoiDetailArSceneHeight;
+
+        var touchBlocker = scene.gameObject.AddComponent<Image>();
+        touchBlocker.color = Color.clear;
+        touchBlocker.raycastTarget = true;
+        scene.gameObject.AddComponent<ArViewportScrollBlocker>();
 
         AddCircle(scene, "ScopeOuter", Color.clear, new Vector2(292f, 430f), new Vector2(0f, -58f), false, Ink, 4f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
         AddCircle(scene, "ScopeInner", Color.clear, new Vector2(260f, 386f), new Vector2(0f, -80f), false, Paper, 2f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
@@ -3170,5 +3196,24 @@ public sealed class AppPolylineGraphic : MaskableGraphic
     private static Vector2 ToRectPoint(Rect rect, Vector2 normalized)
     {
         return new Vector2(rect.xMin + normalized.x * rect.width, rect.yMin + normalized.y * rect.height);
+    }
+}
+
+public sealed class ArViewportScrollBlocker : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler, IScrollHandler
+{
+    public void OnBeginDrag(PointerEventData eventData)
+    {
+    }
+
+    public void OnDrag(PointerEventData eventData)
+    {
+    }
+
+    public void OnEndDrag(PointerEventData eventData)
+    {
+    }
+
+    public void OnScroll(PointerEventData eventData)
+    {
     }
 }

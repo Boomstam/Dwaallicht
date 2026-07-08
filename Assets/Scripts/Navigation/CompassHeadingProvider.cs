@@ -487,10 +487,46 @@ namespace Dwaallicht.Navigation
                     return;
                 }
 
-                LatLon = new Vector2(
-                    (float)location.Call<double>("getLatitude"),
-                    (float)location.Call<double>("getLongitude"));
-                HasLocation = true;
+                if (TryCaptureSingleLocation(location))
+                {
+                    return;
+                }
+
+                TryCaptureLocationList(location);
+            }
+
+            private bool TryCaptureSingleLocation(AndroidJavaObject location)
+            {
+                try
+                {
+                    LatLon = new Vector2(
+                        (float)location.Call<double>("getLatitude"),
+                        (float)location.Call<double>("getLongitude"));
+                    HasLocation = true;
+                    return true;
+                }
+                catch (AndroidJavaException)
+                {
+                    return false;
+                }
+            }
+
+            private void TryCaptureLocationList(AndroidJavaObject locations)
+            {
+                try
+                {
+                    var count = locations.Call<int>("size");
+                    if (count <= 0)
+                    {
+                        return;
+                    }
+
+                    using var latestLocation = locations.Call<AndroidJavaObject>("get", count - 1);
+                    TryCaptureSingleLocation(latestLocation);
+                }
+                catch (AndroidJavaException)
+                {
+                }
             }
         }
 #endif
