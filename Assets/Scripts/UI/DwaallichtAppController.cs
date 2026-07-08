@@ -99,6 +99,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private RectTransform contentRoot;
     private RectTransform tabRoot;
     private RectTransform compassRose;
+    private RectTransform compassTargetNeedle;
     private RectTransform mapFacingArrow;
     private RectTransform mapViewport;
     private RectTransform mapContentRoot;
@@ -109,6 +110,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Text debugText;
     private Text navigationText;
     private Text headingText;
+    private Text compassTargetDistanceText;
     private RectTransform mapLoadingPanel;
     private Text mapLoadingText;
     private Text mapCalibrationText;
@@ -267,10 +269,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
         CleanupPoiImageAssets();
         ClearChildren(contentRoot);
         compassRose = null;
+        compassTargetNeedle = null;
         mapFacingArrow = null;
         debugText = null;
         navigationText = null;
         headingText = null;
+        compassTargetDistanceText = null;
         mapLoadingPanel = null;
         mapLoadingText = null;
         mapViewport = null;
@@ -401,7 +405,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         AddImage(compassRose, "NorthNeedle", Green, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 48f), new Vector2(12f, 96f));
-        AddImage(compassRose, "SouthNeedle", Red, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -36f), new Vector2(10f, 72f));
+        AddImage(compassRose, "SouthNeedle", Green, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -36f), new Vector2(10f, 72f));
+
+        compassTargetNeedle = AddRect(compassRose, "TargetNeedle", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(260f, 260f));
+        AddImage(compassTargetNeedle, "TargetNorthNeedle", Blue, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 48f), new Vector2(12f, 96f));
+        AddImage(compassTargetNeedle, "TargetSouthNeedle", Blue, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -36f), new Vector2(10f, 72f));
+        compassTargetNeedle.gameObject.SetActive(false);
 
         AddText(compassRose, "N", 28, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-24f, 78f), new Vector2(48f, 48f));
         AddText(compassRose, "O", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(80f, -24f), new Vector2(48f, 48f));
@@ -409,9 +418,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
         AddText(compassRose, "W", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-128f, -24f), new Vector2(48f, 48f));
 
         AddCircle(compass, "GoldCenter", Gold, Vector2.one * 56f, Vector2.zero, true, Gold, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        compassTargetDistanceText = AddText(compass, "0 m", 18, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(76f, 40f));
+        compassTargetDistanceText.gameObject.SetActive(false);
         headingText = AddText(parent, "000 graden", 20, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 84f), new Vector2(0f, 124f));
-        AddText(parent, "34 m", 28, FontStyle.Bold, Gold, TextAnchor.MiddleCenter, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 20f), new Vector2(0f, 60f));
         debugText = AddText(parent, "", 13, FontStyle.Normal, Ink, TextAnchor.LowerLeft, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(28f, 128f), new Vector2(-28f, 210f));
+        UpdateCompassTargetNavigation();
     }
 
     private void BuildMapScreen(RectTransform parent)
@@ -1007,6 +1018,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
         {
             navigationText.text = BuildNavigationText();
         }
+
+        UpdateCompassTargetNavigation();
 
         if (mapLoadingText != null)
         {
@@ -2844,7 +2857,46 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         var poi = poiManager.SelectedPoi;
         var distance = GeoMath.DistanceMeters(headingProvider.CurrentLatLon, poi.LatLon);
-        return AddCompassWarning($"{poi.title}\n{distance:0} m");
+        return AddCompassWarning($"{poi.title}\n{FormatDistanceMeters(distance)}");
+    }
+
+    private void UpdateCompassTargetNavigation()
+    {
+        var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
+        var hasTarget = selectedPoi != null && headingProvider != null && headingProvider.IsReady;
+
+        if (compassTargetNeedle != null)
+        {
+            compassTargetNeedle.gameObject.SetActive(hasTarget);
+        }
+
+        if (compassTargetDistanceText != null)
+        {
+            compassTargetDistanceText.gameObject.SetActive(hasTarget);
+        }
+
+        if (!hasTarget)
+        {
+            return;
+        }
+
+        var bearing = GeoMath.BearingTo(headingProvider.CurrentLatLon, selectedPoi.LatLon);
+        var distance = GeoMath.DistanceMeters(headingProvider.CurrentLatLon, selectedPoi.LatLon);
+
+        if (compassTargetNeedle != null)
+        {
+            compassTargetNeedle.localEulerAngles = new Vector3(0f, 0f, -bearing);
+        }
+
+        if (compassTargetDistanceText != null)
+        {
+            compassTargetDistanceText.text = FormatDistanceMeters(distance);
+        }
+    }
+
+    private static string FormatDistanceMeters(float distance)
+    {
+        return $"{distance:0} m";
     }
 
     private string AddCompassWarning(string text)
