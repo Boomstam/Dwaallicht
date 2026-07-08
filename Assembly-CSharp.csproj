@@ -55,6 +55,7 @@
     <Compile Include="Assets\Scripts\MapEngine\MVTParser.cs" />
     <Compile Include="Assets\Scripts\MapEngine\MapCameraController.cs" />
     <Compile Include="Assets\Scripts\MapEngine\PMTilesReader.cs" />
+    <Compile Include="Assets\Scripts\Navigation\PoiSheetCsvParser.cs" />
     <Compile Include="Assets\Scripts\MapEngine\MapController.cs" />
     <Compile Include="Assets\Scripts\Navigation\MapNavigationOverlay.cs" />
     <Compile Include="Assets\Scripts\Navigation\PointOfInterest.cs" />

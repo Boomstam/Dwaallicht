@@ -49,6 +49,7 @@
   <ItemGroup>
     <Compile Include="Assets\Tests\EditMode\DwaallichtArScannerTests.cs" />
     <Compile Include="Assets\Tests\EditMode\NavigationMathTests.cs" />
+    <Compile Include="Assets\Tests\EditMode\PoiSheetCsvParserTests.cs" />
     <None Include="Assets\Tests\EditMode\Dwaallicht.Navigation.Tests.asmdef" />
     <Reference Include="UnityEngine">
       <HintPath>C:\Program Files\Unity\Hub\Editor\6000.3.10f1\Editor\Data\Managed\UnityEngine\UnityEngine.dll</HintPath>

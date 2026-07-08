@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Dwaallicht.Cloud;
 using UnityEngine;
 
 namespace Dwaallicht.Navigation
@@ -9,6 +10,11 @@ namespace Dwaallicht.Navigation
     public sealed class PoiManager : MonoBehaviour
     {
         [SerializeField] private bool loadSavedPois = false;
+        [SerializeField] private bool loadSheetPois = true;
+        [SerializeField] private string sheetFolderName = "DriveSync";
+        [SerializeField] private string sheetFileName = "Points of Interest.csv";
+        [SerializeField] private bool reloadAfterDriveSync = true;
+        [SerializeField] private Color sheetPoiColor = new Color(0.86f, 0.08f, 0.13f, 1f);
         [SerializeField] private List<PointOfInterest> pois = new List<PointOfInterest>();
 
         public IReadOnlyList<PointOfInterest> Pois => pois;
@@ -16,6 +22,7 @@ namespace Dwaallicht.Navigation
         public event Action PoisChanged;
         public event Action<PointOfInterest> SelectionChanged;
 
+        private GoogleDriveFolderSync driveSync;
         private string SavePath => Path.Combine(Application.persistentDataPath, "dwaallicht-pois.json");
 
         private void Awake()
@@ -25,7 +32,8 @@ namespace Dwaallicht.Navigation
                 Load();
             }
 
-            if (pois.Count == 0)
+            var loadedSheetPois = loadSheetPois && TryLoadSheetPois();
+            if (!loadedSheetPois && pois.Count == 0)
             {
                 SeedDefaults();
             }
@@ -33,6 +41,25 @@ namespace Dwaallicht.Navigation
             foreach (var poi in pois)
             {
                 poi.EnsureId();
+            }
+        }
+
+        private void OnEnable()
+        {
+            SubscribeToDriveSync();
+        }
+
+        private void Start()
+        {
+            SubscribeToDriveSync();
+        }
+
+        private void OnDisable()
+        {
+            if (driveSync != null)
+            {
+                driveSync.SyncFinished -= HandleDriveSyncFinished;
+                driveSync = null;
             }
         }
 
@@ -117,6 +144,80 @@ namespace Dwaallicht.Navigation
             {
                 Debug.LogWarning($"[PoiManager] Could not load POIs: {ex.Message}");
             }
+        }
+
+        private void SubscribeToDriveSync()
+        {
+            if (!reloadAfterDriveSync || driveSync != null)
+            {
+                return;
+            }
+
+            driveSync = FindFirstObjectByType<GoogleDriveFolderSync>();
+            if (driveSync != null)
+            {
+                driveSync.SyncFinished += HandleDriveSyncFinished;
+            }
+        }
+
+        private void HandleDriveSyncFinished(bool success)
+        {
+            if (!success || !loadSheetPois || !TryLoadSheetPois())
+            {
+                return;
+            }
+
+            PoisChanged?.Invoke();
+            if (SelectedPoi == null || !pois.Contains(SelectedPoi))
+            {
+                SelectPoi(pois.Count > 0 ? pois[0] : null);
+            }
+        }
+
+        private bool TryLoadSheetPois()
+        {
+            foreach (var path in GetSheetCandidatePaths())
+            {
+                if (string.IsNullOrWhiteSpace(path) || path.Contains("://") || !File.Exists(path))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (!PoiSheetCsvParser.TryParse(File.ReadAllText(path), sheetPoiColor, out var parsedPois, out var error))
+                    {
+                        Debug.LogWarning($"[PoiManager] Could not parse sheet POIs from {path}: {error}");
+                        continue;
+                    }
+
+                    pois = parsedPois;
+                    foreach (var poi in pois)
+                    {
+                        poi.EnsureId();
+                    }
+
+                    Debug.Log($"[PoiManager] Loaded {pois.Count} sheet POI(s) from {path}.");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[PoiManager] Could not load sheet POIs from {path}: {ex.Message}");
+                }
+            }
+
+            return false;
+        }
+
+        private IEnumerable<string> GetSheetCandidatePaths()
+        {
+            if (driveSync != null)
+            {
+                yield return Path.Combine(driveSync.LocalRootPath, sheetFileName);
+            }
+
+            yield return Path.Combine(Application.persistentDataPath, sheetFolderName, sheetFileName);
+            yield return Path.Combine(Application.streamingAssetsPath, sheetFolderName, sheetFileName);
         }
 
         private void SeedDefaults()
