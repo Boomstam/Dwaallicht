@@ -40,6 +40,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float MapClickMoveThresholdPixels = 12f;
     private const float MapTouchTapMoveThresholdDips = 24f;
     private const string PoiArFolderName = "AR";
+    private const float PoiDetailArSceneHeight = 560f;
     private const float PoiDetailContentWidth = 318f;
     private const float PoiDetailModuleSpacing = 14f;
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
@@ -63,8 +64,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     [SerializeField, Range(0, 3)]
     private int activeTab;
-    [SerializeField]
-    private bool showDeviceDebug = true;
     [Header("Map Underlay")]
     [SerializeField]
     private Texture2D mapUnderlayTexture;
@@ -105,6 +104,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private RectTransform mapViewport;
     private RectTransform mapContentRoot;
     private RectTransform mapUnderlayRect;
+    private RectTransform poiDetailScrollViewport;
+    private RectTransform arScrollScene;
     private Image appBackgroundImage;
     private Text debugText;
     private Text navigationText;
@@ -140,6 +141,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return;
         }
 
+        LockMobilePortraitOrientation();
         SubscribeToDriveSync();
         TryLoadSyncedMapUnderlay();
         Build();
@@ -183,6 +185,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         RefreshDynamicText();
+        UpdateArCameraViewport();
         HandleMapCalibrationHandleDrag();
         HandleMapUnderlayDrag();
         HandleMapScrollCalibration();
@@ -274,6 +277,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
         mapViewport = null;
         mapContentRoot = null;
         mapUnderlayRect = null;
+        poiDetailScrollViewport = null;
+        arScrollScene = null;
         mapCalibrationText = null;
         mapScaleBarText = null;
         mapCalibrationHandleRects = null;
@@ -301,6 +306,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         var scanActive = tabIds[activeTab] == "S" && SelectedPoiHasArMap();
+        Debug.Log($"[DwaallichtAppController] ShowTab {tabIds[activeTab]} scanActive={scanActive}");
         if (appBackgroundImage != null)
         {
             appBackgroundImage.color = scanActive ? Color.clear : AppBackground;
@@ -310,6 +316,14 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (arScanner != null)
         {
             arScanner.SetScanningActive(scanActive);
+            if (!scanActive)
+            {
+                arScanner.ResetCameraViewport();
+            }
+            else
+            {
+                UpdateArCameraViewport();
+            }
         }
 
         foreach (var pair in buttons)
@@ -440,11 +454,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         mapFacingArrow = AddArrow(mapContentRoot, "PhoneFacingDirection", Ink, phonePosition + new Vector2(4f, 28f), new Vector2(34f, 88f), 0f);
         AddScaleBar(map);
         AddMapModeControls(map);
-        navigationText = AddText(map, "", 15, FontStyle.Bold, Ink, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(10f, 10f), new Vector2(-10f, -600f));
-        if (showDeviceDebug)
-        {
-            debugText = AddText(map, "", 12, FontStyle.Normal, Ink, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(10f, 54f), new Vector2(-10f, -548f));
-        }
 
         if (IsMapCalibrationActive())
         {
@@ -478,23 +487,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         var hasFolder = TryGetPoiFolder(selectedPoi, out var poiFolder);
         var hasArMap = hasFolder && HasArMap(poiFolder);
-        if (hasArMap)
-        {
-            AddCircle(parent, "ScopeOuter", Color.clear, new Vector2(292f, 430f), new Vector2(0f, -58f), false, Ink, 4f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            AddCircle(parent, "ScopeInner", Color.clear, new Vector2(260f, 386f), new Vector2(0f, -80f), false, Paper, 2f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-            AddPolyline(parent, "ScanReticleHorizontal", Paper, 3f, new[]
-            {
-                new Vector2(0.32f, 0.50f),
-                new Vector2(0.68f, 0.50f),
-            });
-            AddPolyline(parent, "ScanReticleVertical", Paper, 3f, new[]
-            {
-                new Vector2(0.50f, 0.34f),
-                new Vector2(0.50f, 0.66f),
-            });
-        }
+        Debug.Log($"[DwaallichtAppController] Detail tab POI '{selectedPoi.title}' hasFolder={hasFolder} hasArMap={hasArMap} folder='{poiFolder}'");
 
         var viewport = AddRect(parent, "PoiDetailScrollViewport", Vector2.zero, Vector2.one, new Vector2(24f, 24f), new Vector2(-24f, -20f));
+        poiDetailScrollViewport = viewport;
         var viewportImage = viewport.gameObject.AddComponent<Image>();
         viewportImage.color = Color.clear;
         viewportImage.raycastTarget = true;
@@ -519,13 +515,18 @@ public sealed class DwaallichtAppController : MonoBehaviour
         scrollRect.content = content;
         scrollRect.viewport = viewport;
 
-        AddDetailLabel(content, selectedPoi.title, 28, FontStyle.Bold, hasArMap ? Paper : Ink, 52f, TextAnchor.UpperCenter);
+        if (hasArMap)
+        {
+            arScrollScene = AddArScrollScene(content);
+        }
+
+        AddDetailLabel(content, selectedPoi.title, 28, FontStyle.Bold, Ink, 52f, TextAnchor.UpperCenter, hasArMap);
         if (!hasFolder)
         {
             return;
         }
 
-        var detailColor = hasArMap ? Paper : Ink;
+        var detailColor = Ink;
         var entries = GetPoiContentEntries(poiFolder, hasArMap);
         for (var i = 0; i < entries.Count; i++)
         {
@@ -533,10 +534,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
             switch (entry.kind)
             {
                 case PoiContentKind.Ar:
-                    AddDetailLabel(content, "Scan", 18, FontStyle.Bold, Paper, 34f);
+                    AddDetailLabel(content, "Scan", 18, FontStyle.Bold, Ink, 34f, TextAnchor.UpperLeft, hasArMap);
                     break;
                 case PoiContentKind.Text:
-                    AddDetailLabel(content, entry.text, 18, FontStyle.Normal, detailColor, MeasurePoiTextModuleHeight(entry.text, 18));
+                    AddDetailLabel(content, entry.text, 18, FontStyle.Normal, detailColor, MeasurePoiTextModuleHeight(entry.text, 18), TextAnchor.UpperLeft, hasArMap);
                     break;
                 case PoiContentKind.Audio:
                     AddPoiAudioControl(content, entry.path, entry.displayName, hasArMap);
@@ -550,10 +551,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
             }
         }
 
-        if (showDeviceDebug)
-        {
-            debugText = AddText(parent, "", 12, FontStyle.Normal, hasArMap ? Paper : Ink, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(28f, 24f), new Vector2(-28f, -520f));
-        }
     }
 
     private void AddTreeCluster(RectTransform parent)
@@ -1797,11 +1794,22 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
     }
 
+    private static void LockMobilePortraitOrientation()
+    {
+#if UNITY_IOS || UNITY_ANDROID
+        Screen.autorotateToLandscapeLeft = false;
+        Screen.autorotateToLandscapeRight = false;
+        Screen.autorotateToPortrait = true;
+        Screen.autorotateToPortraitUpsideDown = false;
+        Screen.orientation = ScreenOrientation.Portrait;
+#endif
+    }
+
     private void AddSelectedPoiCard(RectTransform map, PointOfInterest poi, Vector2 pinPosition)
     {
         var title = string.IsNullOrWhiteSpace(poi.title) ? "POI" : poi.title.Trim();
-        var width = Mathf.Clamp(title.Length * 8.5f + 32f, 96f, 252f);
-        var card = AddImage(map, "SelectedPoiCard", TranslucentPaper, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), pinPosition + new Vector2(0f, 48f), new Vector2(width, 34f));
+        var width = Mathf.Clamp(title.Length * 8.5f + 48f, 128f, 252f);
+        var card = AddImage(map, "SelectedPoiCard", TranslucentPaper, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), pinPosition + new Vector2(0f, 48f), new Vector2(width, 78f));
         var image = card.GetComponent<Image>();
         image.raycastTarget = true;
         var outline = card.gameObject.AddComponent<Outline>();
@@ -1812,7 +1820,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         button.targetGraphic = image;
         button.onClick.AddListener(() => ShowTab(3));
 
-        AddText(card, title, 15, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Vector2(10f, 0f), new Vector2(-10f, 0f));
+        navigationText = AddText(card, "", 14, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Vector2(10f, 6f), new Vector2(-10f, -6f));
         var ring = AddCircle(map, "SelectedPoiRing", Color.clear, Vector2.one * 56f, pinPosition + new Vector2(0f, 4f), false, Gold, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         ring.GetComponent<Graphic>().raycastTarget = false;
         card.SetAsLastSibling();
@@ -2071,12 +2079,101 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return true;
     }
 
-    private Text AddDetailLabel(RectTransform parent, string value, int fontSize, FontStyle style, Color color, float preferredHeight, TextAnchor alignment = TextAnchor.UpperLeft)
+    private void UpdateArCameraViewport()
     {
-        var holder = AddRect(parent, "DetailLabel", new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, preferredHeight));
+        if (arScanner == null || arScrollScene == null || poiDetailScrollViewport == null || tabIds[activeTab] != "S")
+        {
+            return;
+        }
+
+        if (!TryGetClippedScreenRect(arScrollScene, poiDetailScrollViewport, out var screenRect))
+        {
+            arScanner.SetCameraViewport(new Rect(0f, 0f, 0.001f, 0.001f), false);
+            return;
+        }
+
+        var normalized = new Rect(
+            screenRect.xMin / Screen.width,
+            screenRect.yMin / Screen.height,
+            screenRect.width / Screen.width,
+            screenRect.height / Screen.height);
+        arScanner.SetCameraViewport(normalized, true);
+    }
+
+    private static bool TryGetClippedScreenRect(RectTransform target, RectTransform clip, out Rect clippedRect)
+    {
+        clippedRect = default;
+        if (target == null || clip == null || Screen.width <= 0 || Screen.height <= 0)
+        {
+            return false;
+        }
+
+        var targetRect = GetScreenRect(target);
+        var clipRect = GetScreenRect(clip);
+        var screenRect = new Rect(0f, 0f, Screen.width, Screen.height);
+        clippedRect = IntersectRects(IntersectRects(targetRect, clipRect), screenRect);
+        return clippedRect.width > 1f && clippedRect.height > 1f;
+    }
+
+    private static Rect GetScreenRect(RectTransform rectTransform)
+    {
+        var corners = new Vector3[4];
+        rectTransform.GetWorldCorners(corners);
+        var canvas = rectTransform.GetComponentInParent<Canvas>();
+        var camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
+
+        var min = RectTransformUtility.WorldToScreenPoint(camera, corners[0]);
+        var max = min;
+        for (var i = 1; i < corners.Length; i++)
+        {
+            var point = RectTransformUtility.WorldToScreenPoint(camera, corners[i]);
+            min = Vector2.Min(min, point);
+            max = Vector2.Max(max, point);
+        }
+
+        return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+    }
+
+    private static Rect IntersectRects(Rect a, Rect b)
+    {
+        var xMin = Mathf.Max(a.xMin, b.xMin);
+        var yMin = Mathf.Max(a.yMin, b.yMin);
+        var xMax = Mathf.Min(a.xMax, b.xMax);
+        var yMax = Mathf.Min(a.yMax, b.yMax);
+        return xMax <= xMin || yMax <= yMin ? Rect.zero : Rect.MinMaxRect(xMin, yMin, xMax, yMax);
+    }
+
+    private RectTransform AddArScrollScene(RectTransform parent)
+    {
+        var scene = AddRect(parent, "ArScrollScene", new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, PoiDetailArSceneHeight));
+        var layoutElement = scene.gameObject.AddComponent<LayoutElement>();
+        layoutElement.preferredHeight = PoiDetailArSceneHeight;
+
+        AddCircle(scene, "ScopeOuter", Color.clear, new Vector2(292f, 430f), new Vector2(0f, -58f), false, Ink, 4f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+        AddCircle(scene, "ScopeInner", Color.clear, new Vector2(260f, 386f), new Vector2(0f, -80f), false, Paper, 2f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+        AddPolyline(scene, "ScanReticleHorizontal", Paper, 3f, new[]
+        {
+            new Vector2(0.32f, 0.50f),
+            new Vector2(0.68f, 0.50f),
+        });
+        AddPolyline(scene, "ScanReticleVertical", Paper, 3f, new[]
+        {
+            new Vector2(0.50f, 0.34f),
+            new Vector2(0.50f, 0.66f),
+        });
+
+        return scene;
+    }
+
+    private Text AddDetailLabel(RectTransform parent, string value, int fontSize, FontStyle style, Color color, float preferredHeight, TextAnchor alignment = TextAnchor.UpperLeft, bool usePanel = false)
+    {
+        var holder = usePanel
+            ? AddImage(parent, "DetailLabel", Paper, new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, preferredHeight))
+            : AddRect(parent, "DetailLabel", new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, preferredHeight));
         var layoutElement = holder.gameObject.AddComponent<LayoutElement>();
         layoutElement.preferredHeight = preferredHeight;
-        var text = AddText(holder, value, fontSize, style, color, alignment, Vector2.zero, Vector2.one, new Vector2(4f, 0f), new Vector2(-4f, 0f));
+        var padding = usePanel ? 12f : 4f;
+        var text = AddText(holder, value, fontSize, style, color, alignment, Vector2.zero, Vector2.one, new Vector2(padding, 0f), new Vector2(-padding, 0f));
         text.raycastTarget = false;
         return text;
     }
@@ -2257,7 +2354,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         if (player.loadFailed)
         {
-            player.statusText.text = "Video kan niet worden afgespeeld.\n" + BuildPoiVideoFailureReason(player) + BuildPoiVideoErrorDebugText(player);
+            player.statusText.text = "Video kan niet worden afgespeeld.\n" + BuildPoiVideoFailureReason(player);
             player.statusText.color = Red;
             return;
         }
@@ -2279,8 +2376,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         {
             player.statusText.text = "Video voorbereiden...";
         }
-
-        player.statusText.text += BuildPoiVideoDebugText(player);
     }
 
     private string BuildPoiVideoFailureReason(PoiVideoPlayer player)
@@ -2310,32 +2405,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return !string.IsNullOrEmpty(haystack)
             && !string.IsNullOrEmpty(needle)
             && haystack.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
-    private string BuildPoiVideoDebugText(PoiVideoPlayer player)
-    {
-        if (!showDeviceDebug || player == null || player.player == null)
-        {
-            return "";
-        }
-
-        var fileName = string.IsNullOrWhiteSpace(player.filePath) ? "-" : Path.GetFileName(player.filePath);
-        return $"\nDebug: {fileName} | {GetPoiVideoSourceLabel(player.filePath)} | prepared={player.player.isPrepared} frame={player.player.frame}";
-    }
-
-    private string BuildPoiVideoErrorDebugText(PoiVideoPlayer player)
-    {
-        if (player == null || player.player == null)
-        {
-            return "";
-        }
-
-        var fileName = string.IsNullOrWhiteSpace(player.filePath) ? "-" : Path.GetFileName(player.filePath);
-        return "\n" +
-               $"Raw: {AbbreviateMiddle(player.errorMessage, 96)}\n" +
-               $"File: {fileName} | {GetPoiVideoSourceLabel(player.filePath)} | {FormatFileSize(GetFileSize(player.filePath))}\n" +
-               $"Player: prepared={player.player.isPrepared} frame={player.player.frame} frameCount={player.player.frameCount} length={player.player.length:0.##}\n" +
-               $"Device: {AbbreviateMiddle(SystemInfo.deviceModel, 42)}";
     }
 
     private string BuildPoiVideoLogDetails(PoiVideoPlayer player)
@@ -2778,10 +2847,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         var poi = poiManager.SelectedPoi;
-        var bearing = GeoMath.BearingTo(headingProvider.CurrentLatLon, poi.LatLon);
-        var turn = GeoMath.SignedDeltaDegrees(headingProvider.Heading, bearing);
         var distance = GeoMath.DistanceMeters(headingProvider.CurrentLatLon, poi.LatLon);
-        return AddCompassWarning($"{poi.title}  {distance:0} m  {turn:+0;-0;0} graden");
+        return AddCompassWarning($"{poi.title}\n{distance:0} m");
     }
 
     private string AddCompassWarning(string text)
@@ -2796,11 +2863,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private string BuildDebugText()
     {
-        if (!showDeviceDebug)
-        {
-            return "";
-        }
-
         if (tabIds[activeTab] == "S")
         {
             return BuildArScannerDebugText();

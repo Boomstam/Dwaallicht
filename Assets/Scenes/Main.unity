@@ -385,7 +385,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DwaallichtAppController
   activeTab: 0
-  showDeviceDebug: 1
   mapUnderlayTexture: {fileID: 2800000, guid: 1762ba52a9d0cb547b9fe9e8ed4fd822, type: 3}
   mapCenterLatLon: {x: 51.096466, y: 4.344778}
   mapUnderlayOffsetPixels: {x: 58.10565, y: 26.537806}

@@ -42,6 +42,8 @@ namespace Dwaallicht.AR
         private int cameraFrameCount;
         private int lastCameraTextureCount;
         private float lastCameraFrameRealtime = -1f;
+        private Rect lastCameraViewport = new Rect(0f, 0f, 1f, 1f);
+        private bool lastCameraViewportVisible = true;
 
         public bool IsScanningActive => scanningActive;
         public bool HasVisibleCube => cube != null && cube.activeInHierarchy;
@@ -80,6 +82,7 @@ namespace Dwaallicht.AR
         {
             ResolveReferences();
             scanningActive = active;
+            Debug.Log($"[DwaallichtArScanner] SetScanningActive({active}) origin={(xrOrigin != null)} session={(arSession != null)} imageManager={(trackedImageManager != null)} arCamera={(arCamera != null)} background={(arCameraBackground != null)}");
 
             EnsureArSubsystemsRunning();
 
@@ -100,12 +103,13 @@ namespace Dwaallicht.AR
 
             if (arCameraBackground != null)
             {
-                arCameraBackground.enabled = active;
+                arCameraBackground.enabled = active && lastCameraViewportVisible;
             }
 
             if (arCamera != null)
             {
-                arCamera.enabled = active;
+                arCamera.enabled = active && lastCameraViewportVisible;
+                arCamera.rect = lastCameraViewportVisible ? lastCameraViewport : new Rect(0f, 0f, 0.001f, 0.001f);
             }
 
             if (appCamera != null)
@@ -123,6 +127,48 @@ namespace Dwaallicht.AR
             {
                 HideCube();
                 DestroySimulation();
+            }
+        }
+
+        public void SetCameraViewport(Rect normalizedViewport, bool visible)
+        {
+            ResolveReferences();
+
+            normalizedViewport.x = Mathf.Clamp01(normalizedViewport.x);
+            normalizedViewport.y = Mathf.Clamp01(normalizedViewport.y);
+            normalizedViewport.width = Mathf.Clamp01(normalizedViewport.width);
+            normalizedViewport.height = Mathf.Clamp01(normalizedViewport.height);
+            visible = visible && normalizedViewport.width > 0.001f && normalizedViewport.height > 0.001f;
+
+            var changed = visible != lastCameraViewportVisible || !Approximately(normalizedViewport, lastCameraViewport);
+            lastCameraViewportVisible = visible;
+            lastCameraViewport = normalizedViewport;
+
+            if (arCamera != null)
+            {
+                arCamera.rect = visible ? normalizedViewport : new Rect(0f, 0f, 0.001f, 0.001f);
+                arCamera.enabled = scanningActive && visible;
+            }
+
+            if (arCameraBackground != null)
+            {
+                arCameraBackground.enabled = scanningActive && visible;
+            }
+
+            if (changed)
+            {
+                Debug.Log($"[DwaallichtArScanner] AR viewport visible={visible} rect={normalizedViewport}");
+            }
+        }
+
+        public void ResetCameraViewport()
+        {
+            lastCameraViewport = new Rect(0f, 0f, 1f, 1f);
+            lastCameraViewportVisible = true;
+
+            if (arCamera != null)
+            {
+                arCamera.rect = lastCameraViewport;
             }
         }
 
@@ -432,6 +478,15 @@ namespace Dwaallicht.AR
         private static string EnabledStatus(bool enabled)
         {
             return enabled ? "on" : "off";
+        }
+
+        private static bool Approximately(Rect a, Rect b)
+        {
+            const float epsilon = 0.005f;
+            return Mathf.Abs(a.x - b.x) < epsilon
+                && Mathf.Abs(a.y - b.y) < epsilon
+                && Mathf.Abs(a.width - b.width) < epsilon
+                && Mathf.Abs(a.height - b.height) < epsilon;
         }
 
         private static string SessionSubsystemStatus(ARSession session)
