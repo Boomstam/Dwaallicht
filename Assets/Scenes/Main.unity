@@ -331,6 +331,19 @@ MonoBehaviour:
   activeTab: 0
   showDeviceDebug: 1
   showAdminPoiControls: 1
+  mapUnderlayTexture: {fileID: 2800000, guid: 1762ba52a9d0cb547b9fe9e8ed4fd822, type: 3}
+  mapCenterLatLon: {x: 51.096466, y: 4.344778}
+  mapUnderlayOffsetPixels: {x: 0, y: 0}
+  mapUnderlayMetersPerPixel: 2
+  mapZoomMultiplier: 1
+  mapUnderlayRotationDegrees: 0
+  useThreePointMapCalibration: 0
+  mapCalibrationTargetPixels:
+  - {x: 0, y: 0}
+  - {x: 0, y: 0}
+  - {x: 0, y: 0}
+  showMapPoiPins: 1
+  showMapCalibrationControls: 1
 --- !u!4 &1677605752
 Transform:
   m_ObjectHideFlags: 0

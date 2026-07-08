@@ -3,6 +3,7 @@ using Dwaallicht.AR;
 using Dwaallicht.Navigation;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
@@ -17,10 +18,30 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private static readonly Color Red = Rgb(222, 22, 32);
     private static readonly Color Gold = Rgb(187, 137, 20);
     private static readonly Color Yellow = Rgb(255, 203, 34);
-    private static readonly Vector2 AppMapCenterLatLon = new Vector2(51.18623f, 4.22974f);
-    private static readonly Vector2 PhoneMapPosition = new Vector2(172f, -306f);
-    private static readonly Vector2 MapDesignSize = new Vector2(342f, 696f);
-    private const float MapMetersToPixels = 0.18f;
+    private static readonly Color TranslucentPaper = new Color(248f / 255f, 248f / 255f, 246f / 255f, 0.88f);
+    private static readonly Color TranslucentInk = new Color(32f / 255f, 30f / 255f, 31f / 255f, 0.76f);
+    private const string MapCalibrationPrefsPrefix = "Dwaallicht.MapCalibration.";
+    private const float MapScaleBarPixels = 96f;
+    private const float MapOffsetNudgePixels = 8f;
+    private const float MapScaleStep = 1.02f;
+    private const float MapScrollZoomStep = 1.04f;
+    private const float MapRotationStepDegrees = 0.1f;
+    private const float MapScrollRotationStepDegrees = 0.05f;
+    private const float MapMinScaleBarMeters = 10f;
+    private const float MapMaxScaleBarMeters = 500f;
+    private const float MapCalibrationHandleRadius = 34f;
+    private static readonly Vector2[] DefaultMapCalibrationLatLons =
+    {
+        new Vector2(51.094750f, 4.347785f),
+        new Vector2(51.107604f, 4.369738f),
+        new Vector2(51.086803f, 4.360948f),
+    };
+    private static readonly string[] DefaultMapCalibrationLabels =
+    {
+        "Museum",
+        "Banaan",
+        "Rond",
+    };
 
     private readonly string[] tabIds = { "K", "M", "L", "S" };
     private readonly Dictionary<string, Button> buttons = new Dictionary<string, Button>();
@@ -31,19 +52,47 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private bool showDeviceDebug = true;
     [SerializeField]
     private bool showAdminPoiControls = true;
+    [Header("Map Underlay")]
+    [SerializeField]
+    private Texture2D mapUnderlayTexture;
+    [SerializeField]
+    private Vector2 mapCenterLatLon = new Vector2(51.096465f, 4.344778f);
+    [SerializeField]
+    private Vector2 mapUnderlayOffsetPixels = Vector2.zero;
+    [SerializeField, Min(0.01f)]
+    private float mapUnderlayMetersPerPixel = 2f;
+    [SerializeField, Min(0.05f)]
+    private float mapZoomMultiplier = 1f;
+    [SerializeField]
+    private float mapUnderlayRotationDegrees;
+    [SerializeField]
+    private bool useThreePointMapCalibration;
+    [SerializeField]
+    private Vector2[] mapCalibrationTargetPixels = new Vector2[3];
+    [SerializeField]
+    private bool showMapPoiPins = true;
+    [SerializeField]
+    private bool showMapCalibrationControls = true;
 
     private RectTransform contentRoot;
     private RectTransform tabRoot;
     private RectTransform compassRose;
     private RectTransform mapFacingArrow;
+    private RectTransform mapViewport;
+    private RectTransform mapUnderlayRect;
     private Image appBackgroundImage;
     private Text debugText;
     private Text navigationText;
     private Text headingText;
+    private Text mapCalibrationText;
     private DwaallichtArScanner arScanner;
     private CompassHeadingProvider headingProvider;
     private PoiManager poiManager;
     private Font font;
+    private Vector2 lastMapDragLocalPosition;
+    private bool isDraggingMapUnderlay;
+    private int activeMapCalibrationHandle = -1;
+    private RectTransform[] mapCalibrationHandleRects;
 
     private void OnEnable()
     {
@@ -66,6 +115,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
         EnsurePoiManager();
 
         RefreshDynamicText();
+        HandleMapCalibrationHandleDrag();
+        HandleMapUnderlayDrag();
+        HandleMapScrollCalibration();
 
         if (headingProvider == null || !headingProvider.IsReady)
         {
@@ -121,6 +173,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
         contentRoot = AddRect(root, "ScreenContent", new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0f, 104f), new Vector2(0f, 0f));
         tabRoot = AddRect(root, "PermanentTabs", new Vector2(0f, 0f), new Vector2(1f, 0f), Vector2.zero, new Vector2(0f, 104f));
 
+        LoadMapCalibration();
+        EnsureMapCalibrationTargets();
         BuildTabs();
         ShowTab(activeTab);
     }
@@ -139,6 +193,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
         debugText = null;
         navigationText = null;
         headingText = null;
+        mapViewport = null;
+        mapUnderlayRect = null;
+        mapCalibrationText = null;
+        mapCalibrationHandleRects = null;
+        isDraggingMapUnderlay = false;
+        activeMapCalibrationHandle = -1;
 
         switch (tabIds[activeTab])
         {
@@ -254,73 +314,40 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private void BuildMapScreen(RectTransform parent)
     {
         EnsurePoiManager();
+        EnsureHeadingProvider();
         var map = AddRect(parent, "MapGraphic", Vector2.zero, Vector2.one, new Vector2(24f, 24f), new Vector2(-24f, -20f));
         AddImage(map, "MapFill", AppBackground, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
 
-        AddPolyline(map, "RiverStroke", Ink, 9f, new[]
-        {
-            new Vector2(-0.05f, 0.62f),
-            new Vector2(0.16f, 0.58f),
-            new Vector2(0.24f, 0.48f),
-            new Vector2(0.34f, 0.43f),
-            new Vector2(0.61f, 0.43f),
-            new Vector2(0.73f, 0.37f),
-            new Vector2(0.88f, 0.23f),
-            new Vector2(1.06f, 0.16f),
-        });
-        AddPolyline(map, "RiverFill", Paper, 6f, new[]
-        {
-            new Vector2(-0.05f, 0.62f),
-            new Vector2(0.16f, 0.58f),
-            new Vector2(0.24f, 0.48f),
-            new Vector2(0.34f, 0.43f),
-            new Vector2(0.61f, 0.43f),
-            new Vector2(0.73f, 0.37f),
-            new Vector2(0.88f, 0.23f),
-            new Vector2(1.06f, 0.16f),
-        });
-        AddPolyline(map, "RoadStroke", Ink, 7f, new[]
-        {
-            new Vector2(-0.08f, 0.52f),
-            new Vector2(0.14f, 0.49f),
-            new Vector2(0.22f, 0.36f),
-            new Vector2(0.34f, 0.34f),
-            new Vector2(0.49f, 0.29f),
-            new Vector2(0.64f, 0.18f),
-            new Vector2(0.67f, 0.11f),
-            new Vector2(0.85f, 0.04f),
-            new Vector2(1.04f, 0.01f),
-        });
-        AddPolyline(map, "RoadFill", AppBackground, 4f, new[]
-        {
-            new Vector2(-0.08f, 0.52f),
-            new Vector2(0.14f, 0.49f),
-            new Vector2(0.22f, 0.36f),
-            new Vector2(0.34f, 0.34f),
-            new Vector2(0.49f, 0.29f),
-            new Vector2(0.64f, 0.18f),
-            new Vector2(0.67f, 0.11f),
-            new Vector2(0.85f, 0.04f),
-            new Vector2(1.04f, 0.01f),
-        });
+        mapViewport = AddRect(map, "MapViewport", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        var mask = mapViewport.gameObject.AddComponent<RectMask2D>();
+        mask.padding = Vector4.zero;
+        AddMapUnderlay(mapViewport);
 
         var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
         if (selectedPoi != null)
         {
             var selectedPosition = MapLatLonToAnchoredPosition(selectedPoi.LatLon);
-            AddPolyline(map, "RouteToSelectedPoi", Ink, 4f, new[]
+            AddPolyline(mapViewport, "RouteToSelectedPoi", Ink, 4f, new[]
             {
-                ToMapNormalized(PhoneMapPosition),
-                ToMapNormalized(selectedPosition),
+                ToMapNormalized(MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon), mapViewport.rect.size),
+                ToMapNormalized(selectedPosition, mapViewport.rect.size),
             });
         }
 
-        AddTreeCluster(map);
-        AddFactory(map);
-        AddMapPois(map);
-        AddCircle(map, "PhonePosition", Paper, Vector2.one * 42f, new Vector2(172f, -306f), true, Ink, 3f, new Vector2(0f, 1f), new Vector2(0f, 1f));
-        mapFacingArrow = AddArrow(map, "PhoneFacingDirection", Ink, new Vector2(176f, -278f), new Vector2(34f, 88f), 0f);
-        AddText(map, "you are here", 24, FontStyle.Normal, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-58f, 110f), new Vector2(190f, 50f));
+        if (showMapPoiPins)
+        {
+            AddMapPois(mapViewport);
+        }
+
+        if (showMapCalibrationControls)
+        {
+            AddMapCalibrationHandles(mapViewport);
+        }
+
+        var phonePosition = MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon);
+        AddCircle(mapViewport, "PhonePosition", Paper, Vector2.one * 42f, phonePosition, true, Ink, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        mapFacingArrow = AddArrow(mapViewport, "PhoneFacingDirection", Ink, phonePosition + new Vector2(4f, 28f), new Vector2(34f, 88f), 0f);
+        AddScaleBar(map);
         navigationText = AddText(map, "", 15, FontStyle.Bold, Ink, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(10f, 10f), new Vector2(-10f, -600f));
         if (showDeviceDebug)
         {
@@ -330,6 +357,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (showAdminPoiControls)
         {
             AddCommandButton(map, "POI +", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-82f, -54f), new Vector2(72f, 34f), AddPoiAhead);
+        }
+
+        if (showMapCalibrationControls)
+        {
+            AddMapCalibrationControls(map);
         }
     }
 
@@ -504,6 +536,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Button AddCommandButton(RectTransform parent, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax, UnityEngine.Events.UnityAction action)
     {
         var rect = AddImage(parent, "Button_" + label, Paper, anchorMin, anchorMax, offsetMin, offsetMax);
+        rect.GetComponent<Image>().raycastTarget = true;
         var outline = rect.gameObject.AddComponent<Outline>();
         outline.effectColor = Ink;
         outline.effectDistance = new Vector2(2f, -2f);
@@ -521,6 +554,16 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var rect = AddRect(parent, name, anchorMin, anchorMax, offsetMin, offsetMax);
         var image = rect.gameObject.AddComponent<Image>();
         image.color = color;
+        image.raycastTarget = false;
+        return rect;
+    }
+
+    private RectTransform AddRawImage(RectTransform parent, string name, Texture texture, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+    {
+        var rect = AddRect(parent, name, anchorMin, anchorMax, offsetMin, offsetMax);
+        var image = rect.gameObject.AddComponent<RawImage>();
+        image.texture = texture;
+        image.color = Color.white;
         image.raycastTarget = false;
         return rect;
     }
@@ -653,6 +696,408 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
     }
 
+    private void AddMapUnderlay(RectTransform parent)
+    {
+        if (mapUnderlayTexture == null)
+        {
+            AddText(parent, "Map texture missing", 18, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            return;
+        }
+
+        mapUnderlayRect = AddRawImage(parent, "MapUnderlay", mapUnderlayTexture, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), mapUnderlayOffsetPixels, GetMapUnderlaySize());
+        mapUnderlayRect.localEulerAngles = new Vector3(0f, 0f, mapUnderlayRotationDegrees);
+        mapUnderlayRect.SetAsFirstSibling();
+    }
+
+    private void AddScaleBar(RectTransform parent)
+    {
+        var holder = AddImage(parent, "ScaleBarPanel", TranslucentPaper, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(12f, 12f), new Vector2(132f, 36f));
+        AddImage(holder, "ScaleBarTrack", TranslucentInk, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(14f, 10f), new Vector2(MapScaleBarPixels, 4f));
+        AddImage(holder, "ScaleBarFill", Ink, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(14f, 10f), new Vector2(MapScaleBarPixels, 4f));
+        AddText(holder, $"{GetScaleBarMeters():0} m", 11, FontStyle.Bold, Ink, TextAnchor.UpperLeft, Vector2.zero, Vector2.one, new Vector2(14f, 14f), new Vector2(-8f, -2f));
+    }
+
+    private void AddMapCalibrationControls(RectTransform parent)
+    {
+        var panel = AddImage(parent, "MapCalibrationPanel", TranslucentPaper, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-168f, -334f), new Vector2(156f, 288f));
+        mapCalibrationText = AddText(panel, BuildMapCalibrationText(), 10, FontStyle.Normal, Ink, TextAnchor.UpperLeft, Vector2.zero, Vector2.one, new Vector2(8f, 112f), new Vector2(-8f, -8f));
+
+        AddCommandButton(panel, "10m", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -104f), new Vector2(42f, 24f), () => SetMapScaleBarMeters(10f));
+        AddCommandButton(panel, "50m", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(56f, -104f), new Vector2(42f, 24f), () => SetMapScaleBarMeters(50f));
+        AddCommandButton(panel, "500m", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(104f, -104f), new Vector2(44f, 24f), () => SetMapScaleBarMeters(500f));
+
+        AddCommandButton(panel, "-", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -134f), new Vector2(32f, 24f), () => ScaleMapUnderlay(1f / MapScaleStep));
+        AddCommandButton(panel, "+", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(44f, -134f), new Vector2(32f, 24f), () => ScaleMapUnderlay(MapScaleStep));
+        AddCommandButton(panel, "Save", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(82f, -134f), new Vector2(66f, 24f), SaveMapCalibration);
+
+        AddCommandButton(panel, "Rot -", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -164f), new Vector2(66f, 24f), () => RotateMapUnderlay(-MapRotationStepDegrees));
+        AddCommandButton(panel, "Rot +", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(82f, -164f), new Vector2(66f, 24f), () => RotateMapUnderlay(MapRotationStepDegrees));
+        AddCommandButton(panel, useThreePointMapCalibration ? "Fit3 on" : "Fit3 off", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -194f), new Vector2(66f, 24f), ToggleThreePointMapCalibration);
+        AddCommandButton(panel, "Reset3", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(82f, -194f), new Vector2(66f, 24f), ResetThreePointMapCalibration);
+        AddCommandButton(panel, "All -", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -224f), new Vector2(66f, 24f), () => SetMapZoomMultiplier(mapZoomMultiplier / MapScaleStep));
+        AddCommandButton(panel, "All +", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(82f, -224f), new Vector2(66f, 24f), () => SetMapZoomMultiplier(mapZoomMultiplier * MapScaleStep));
+        AddCommandButton(panel, showMapPoiPins ? "Pins on" : "Pins off", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -254f), new Vector2(140f, 24f), ToggleMapPoiPins);
+
+        AddCommandButton(panel, "Up", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(62f, -74f), new Vector2(34f, 24f), () => NudgeMapUnderlay(new Vector2(0f, MapOffsetNudgePixels)));
+        AddCommandButton(panel, "Left", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(18f, -46f), new Vector2(40f, 24f), () => NudgeMapUnderlay(new Vector2(-MapOffsetNudgePixels, 0f)));
+        AddCommandButton(panel, "Right", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(100f, -46f), new Vector2(48f, 24f), () => NudgeMapUnderlay(new Vector2(MapOffsetNudgePixels, 0f)));
+        AddCommandButton(panel, "Down", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(58f, -18f), new Vector2(42f, 24f), () => NudgeMapUnderlay(new Vector2(0f, -MapOffsetNudgePixels)));
+    }
+
+    private void AddMapCalibrationHandles(RectTransform parent)
+    {
+        EnsureMapCalibrationTargets();
+        mapCalibrationHandleRects = new RectTransform[DefaultMapCalibrationLatLons.Length];
+
+        for (var i = 0; i < DefaultMapCalibrationLatLons.Length; i++)
+        {
+            var handle = AddCircle(parent, "Calibrate_" + DefaultMapCalibrationLabels[i], Color.clear, Vector2.one * MapCalibrationHandleRadius, mapCalibrationTargetPixels[i], false, Gold, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            mapCalibrationHandleRects[i] = handle;
+            AddCircle(handle, "Center", Gold, Vector2.one * 8f, Vector2.zero, true, Gold, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            AddText(handle, (i + 1).ToString(), 13, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        }
+    }
+
+    private void HandleMapCalibrationHandleDrag()
+    {
+        if (tabIds[activeTab] != "M" || mapViewport == null || !showMapCalibrationControls)
+        {
+            activeMapCalibrationHandle = -1;
+            return;
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointerDown(out var pointerPosition)
+            && RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out var localPosition))
+        {
+            activeMapCalibrationHandle = FindNearestMapCalibrationHandle(localPosition);
+        }
+
+        if (activeMapCalibrationHandle < 0)
+        {
+            return;
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.PrimaryPointerReleasedThisFrame())
+        {
+            activeMapCalibrationHandle = -1;
+            ShowTab(activeTab);
+            return;
+        }
+
+        if (!Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointer(out pointerPosition)
+            || !RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out localPosition))
+        {
+            return;
+        }
+
+        mapCalibrationTargetPixels[activeMapCalibrationHandle] = localPosition;
+        useThreePointMapCalibration = true;
+        if (mapCalibrationHandleRects != null && activeMapCalibrationHandle < mapCalibrationHandleRects.Length && mapCalibrationHandleRects[activeMapCalibrationHandle] != null)
+        {
+            mapCalibrationHandleRects[activeMapCalibrationHandle].anchoredPosition = localPosition;
+        }
+
+        if (mapCalibrationText != null)
+        {
+            mapCalibrationText.text = BuildMapCalibrationText();
+        }
+    }
+
+    private int FindNearestMapCalibrationHandle(Vector2 localPosition)
+    {
+        EnsureMapCalibrationTargets();
+        var nearest = -1;
+        var nearestDistance = MapCalibrationHandleRadius * 0.65f;
+
+        for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
+        {
+            var distance = Vector2.Distance(localPosition, mapCalibrationTargetPixels[i]);
+            if (distance < nearestDistance)
+            {
+                nearest = i;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearest;
+    }
+
+    private void HandleMapUnderlayDrag()
+    {
+        if (tabIds[activeTab] != "M" || mapViewport == null || !showMapCalibrationControls || activeMapCalibrationHandle >= 0)
+        {
+            isDraggingMapUnderlay = false;
+            return;
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointerDown(out var pointerPosition)
+            && RectTransformUtility.RectangleContainsScreenPoint(mapViewport, pointerPosition))
+        {
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out lastMapDragLocalPosition))
+            {
+                isDraggingMapUnderlay = true;
+            }
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.PrimaryPointerReleasedThisFrame())
+        {
+            isDraggingMapUnderlay = false;
+        }
+
+        if (!isDraggingMapUnderlay || !Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointer(out pointerPosition))
+        {
+            return;
+        }
+
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out var localPosition))
+        {
+            return;
+        }
+
+        NudgeMapUnderlay(localPosition - lastMapDragLocalPosition);
+        lastMapDragLocalPosition = localPosition;
+    }
+
+    private void HandleMapScrollCalibration()
+    {
+        if (tabIds[activeTab] != "M" || mapViewport == null)
+        {
+            return;
+        }
+
+        var scroll = Dwaallicht.Input.DwaallichtInput.ReadScrollSteps();
+        if (Mathf.Abs(scroll) < 0.001f)
+        {
+            return;
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.IsAnyKeyPressed(Key.LeftShift, Key.RightShift))
+        {
+            RotateMapUnderlay(scroll * MapScrollRotationStepDegrees);
+            return;
+        }
+
+        SetMapZoomMultiplier(mapZoomMultiplier * Mathf.Pow(MapScrollZoomStep, scroll));
+    }
+
+    private void NudgeMapUnderlay(Vector2 deltaPixels)
+    {
+        mapUnderlayOffsetPixels += deltaPixels;
+        OffsetThreePointTargets(deltaPixels);
+        ApplyMapUnderlayCalibration();
+    }
+
+    private void ScaleMapUnderlay(float factor)
+    {
+        mapUnderlayMetersPerPixel = Mathf.Clamp(mapUnderlayMetersPerPixel / factor, 0.01f, 100f);
+        ClampMapZoomMultiplier();
+        ShowTab(activeTab);
+    }
+
+    private void RotateMapUnderlay(float deltaDegrees)
+    {
+        mapUnderlayRotationDegrees = Mathf.Repeat(mapUnderlayRotationDegrees + deltaDegrees + 180f, 360f) - 180f;
+        RotateThreePointTargets(deltaDegrees);
+        ApplyMapUnderlayCalibration();
+    }
+
+    private void SetMapScaleBarMeters(float meters)
+    {
+        SetMapZoomMultiplier(GetZoomMultiplierForScaleBarMeters(meters));
+    }
+
+    private void SetMapZoomMultiplier(float zoomMultiplier)
+    {
+        var previousZoom = Mathf.Max(0.0001f, mapZoomMultiplier);
+        mapZoomMultiplier = zoomMultiplier;
+        ClampMapZoomMultiplier();
+        var zoomFactor = mapZoomMultiplier / previousZoom;
+        mapUnderlayOffsetPixels *= zoomFactor;
+        ScaleThreePointTargets(zoomFactor);
+        ShowTab(activeTab);
+    }
+
+    private void ClampMapZoomMultiplier()
+    {
+        var minZoom = GetZoomMultiplierForScaleBarMeters(MapMaxScaleBarMeters);
+        var maxZoom = GetZoomMultiplierForScaleBarMeters(MapMinScaleBarMeters);
+        mapZoomMultiplier = Mathf.Clamp(mapZoomMultiplier, minZoom, maxZoom);
+    }
+
+    private float GetZoomMultiplierForScaleBarMeters(float meters)
+    {
+        return MapScaleBarPixels * mapUnderlayMetersPerPixel / Mathf.Max(1f, meters);
+    }
+
+    private void ToggleThreePointMapCalibration()
+    {
+        EnsureMapCalibrationTargets();
+        useThreePointMapCalibration = !useThreePointMapCalibration;
+        ShowTab(activeTab);
+    }
+
+    private void ToggleMapPoiPins()
+    {
+        showMapPoiPins = !showMapPoiPins;
+        ShowTab(activeTab);
+    }
+
+    private void ResetThreePointMapCalibration()
+    {
+        EnsureMapCalibrationTargets(true);
+        useThreePointMapCalibration = true;
+        ShowTab(activeTab);
+    }
+
+    private void EnsureMapCalibrationTargets(bool reset = false)
+    {
+        if (mapCalibrationTargetPixels == null || mapCalibrationTargetPixels.Length != DefaultMapCalibrationLatLons.Length)
+        {
+            mapCalibrationTargetPixels = new Vector2[DefaultMapCalibrationLatLons.Length];
+            reset = true;
+        }
+
+        if (!reset)
+        {
+            var hasAnyTarget = false;
+            for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
+            {
+                if (mapCalibrationTargetPixels[i] != Vector2.zero)
+                {
+                    hasAnyTarget = true;
+                    break;
+                }
+            }
+
+            reset = !hasAnyTarget;
+        }
+
+        if (!reset)
+        {
+            return;
+        }
+
+        for (var i = 0; i < DefaultMapCalibrationLatLons.Length; i++)
+        {
+            mapCalibrationTargetPixels[i] = BaseMapLatLonToAnchoredPosition(DefaultMapCalibrationLatLons[i]);
+        }
+    }
+
+    private void OffsetThreePointTargets(Vector2 deltaPixels)
+    {
+        EnsureMapCalibrationTargets();
+        for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
+        {
+            mapCalibrationTargetPixels[i] += deltaPixels;
+        }
+    }
+
+    private void ScaleThreePointTargets(float factor)
+    {
+        EnsureMapCalibrationTargets();
+        for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
+        {
+            mapCalibrationTargetPixels[i] *= factor;
+        }
+    }
+
+    private void RotateThreePointTargets(float deltaDegrees)
+    {
+        EnsureMapCalibrationTargets();
+        var radians = deltaDegrees * Mathf.Deg2Rad;
+        var cos = Mathf.Cos(radians);
+        var sin = Mathf.Sin(radians);
+
+        for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
+        {
+            var point = mapCalibrationTargetPixels[i];
+            mapCalibrationTargetPixels[i] = new Vector2(
+                point.x * cos - point.y * sin,
+                point.x * sin + point.y * cos);
+        }
+    }
+
+    private void ApplyMapUnderlayCalibration()
+    {
+        if (mapUnderlayRect != null)
+        {
+            mapUnderlayRect.anchoredPosition = mapUnderlayOffsetPixels;
+            mapUnderlayRect.sizeDelta = GetMapUnderlaySize();
+            mapUnderlayRect.localEulerAngles = new Vector3(0f, 0f, mapUnderlayRotationDegrees);
+        }
+
+        if (mapCalibrationText != null)
+        {
+            mapCalibrationText.text = BuildMapCalibrationText();
+        }
+    }
+
+    private void SaveMapCalibration()
+    {
+        EnsureMapCalibrationTargets();
+        useThreePointMapCalibration = true;
+        PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "OffsetX", mapUnderlayOffsetPixels.x);
+        PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "OffsetY", mapUnderlayOffsetPixels.y);
+        PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "MetersPerPixel", mapUnderlayMetersPerPixel);
+        PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "Zoom", mapZoomMultiplier);
+        PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "Rotation", mapUnderlayRotationDegrees);
+        PlayerPrefs.SetInt(MapCalibrationPrefsPrefix + "UseThreePoint", useThreePointMapCalibration ? 1 : 0);
+        PlayerPrefs.SetInt(MapCalibrationPrefsPrefix + "ShowPins", showMapPoiPins ? 1 : 0);
+        for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
+        {
+            PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "Target" + i + "X", mapCalibrationTargetPixels[i].x);
+            PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "Target" + i + "Y", mapCalibrationTargetPixels[i].y);
+        }
+
+        PlayerPrefs.Save();
+        ApplyMapUnderlayCalibration();
+    }
+
+    private void LoadMapCalibration()
+    {
+        mapUnderlayOffsetPixels = new Vector2(
+            PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "OffsetX", mapUnderlayOffsetPixels.x),
+            PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "OffsetY", mapUnderlayOffsetPixels.y));
+        mapUnderlayMetersPerPixel = PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "MetersPerPixel", mapUnderlayMetersPerPixel);
+        mapZoomMultiplier = PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "Zoom", mapZoomMultiplier);
+        mapUnderlayRotationDegrees = PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "Rotation", mapUnderlayRotationDegrees);
+        useThreePointMapCalibration = PlayerPrefs.GetInt(MapCalibrationPrefsPrefix + "UseThreePoint", useThreePointMapCalibration ? 1 : 0) == 1;
+        showMapPoiPins = PlayerPrefs.GetInt(MapCalibrationPrefsPrefix + "ShowPins", showMapPoiPins ? 1 : 0) == 1;
+        EnsureMapCalibrationTargets();
+        for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
+        {
+            mapCalibrationTargetPixels[i] = new Vector2(
+                PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "Target" + i + "X", mapCalibrationTargetPixels[i].x),
+                PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "Target" + i + "Y", mapCalibrationTargetPixels[i].y));
+        }
+
+        ClampMapZoomMultiplier();
+    }
+
+    private string BuildMapCalibrationText()
+    {
+        return $"offset {mapUnderlayOffsetPixels.x:0}, {mapUnderlayOffsetPixels.y:0}\n" +
+               $"scale {mapUnderlayMetersPerPixel:0.###} m/px\n" +
+               $"rot {mapUnderlayRotationDegrees:0.00} deg\n" +
+               $"bar {GetScaleBarMeters():0} m\n" +
+               $"fit3 {(useThreePointMapCalibration ? "on" : "off")}";
+    }
+
+    private Vector2 GetMapUnderlaySize()
+    {
+        if (mapUnderlayTexture == null)
+        {
+            return Vector2.zero;
+        }
+
+        return new Vector2(mapUnderlayTexture.width, mapUnderlayTexture.height) * mapZoomMultiplier;
+    }
+
+    private float GetScaleBarMeters()
+    {
+        return MapScaleBarPixels * mapUnderlayMetersPerPixel / Mathf.Max(0.01f, mapZoomMultiplier);
+    }
+
     private void AddMapPois(RectTransform map)
     {
         if (poiManager == null)
@@ -669,7 +1114,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
             var isSelected = poiManager.SelectedPoi == poi;
             var position = MapLatLonToAnchoredPosition(poi.LatLon);
-            var pin = AddPin(map, poi.color, position, isSelected ? 38f : 30f);
+            var pin = AddPin(map, poi.color, position, isSelected ? 38f : 30f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             var button = pin.gameObject.AddComponent<Button>();
             button.targetGraphic = pin.GetComponent<Graphic>();
             button.onClick.AddListener(() =>
@@ -762,19 +1207,73 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return new Vector2(latitude, longitude);
     }
 
-    private static Vector2 MapLatLonToAnchoredPosition(Vector2 latLon)
+    private Vector2 MapLatLonToAnchoredPosition(Vector2 latLon)
     {
-        const float metersPerDegreeLatitude = 111320f;
-        var northMeters = (latLon.x - AppMapCenterLatLon.x) * metersPerDegreeLatitude;
-        var eastMeters = (latLon.y - AppMapCenterLatLon.y) * Mathf.Cos(AppMapCenterLatLon.x * Mathf.Deg2Rad) * metersPerDegreeLatitude;
-        return new Vector2(PhoneMapPosition.x + eastMeters * MapMetersToPixels, PhoneMapPosition.y - northMeters * MapMetersToPixels);
+        if (useThreePointMapCalibration && TryThreePointMapLatLonToAnchoredPosition(latLon, out var calibratedPosition))
+        {
+            return calibratedPosition;
+        }
+
+        return BaseMapLatLonToAnchoredPosition(latLon);
     }
 
-    private static Vector2 ToMapNormalized(Vector2 anchoredFromTopLeft)
+    private Vector2 BaseMapLatLonToAnchoredPosition(Vector2 latLon)
+    {
+        var meters = MapLatLonToMeters(latLon);
+        var pixelsPerMeter = mapZoomMultiplier / Mathf.Max(0.01f, mapUnderlayMetersPerPixel);
+        return meters * pixelsPerMeter;
+    }
+
+    private Vector2 MapLatLonToMeters(Vector2 latLon)
+    {
+        const float metersPerDegreeLatitude = 111320f;
+        var northMeters = (latLon.x - mapCenterLatLon.x) * metersPerDegreeLatitude;
+        var eastMeters = (latLon.y - mapCenterLatLon.y) * Mathf.Cos(mapCenterLatLon.x * Mathf.Deg2Rad) * metersPerDegreeLatitude;
+        return new Vector2(eastMeters, northMeters);
+    }
+
+    private bool TryThreePointMapLatLonToAnchoredPosition(Vector2 latLon, out Vector2 anchoredPosition)
+    {
+        EnsureMapCalibrationTargets();
+        var p0 = MapLatLonToMeters(DefaultMapCalibrationLatLons[0]);
+        var p1 = MapLatLonToMeters(DefaultMapCalibrationLatLons[1]);
+        var p2 = MapLatLonToMeters(DefaultMapCalibrationLatLons[2]);
+        var target0 = mapCalibrationTargetPixels[0];
+        var target1 = mapCalibrationTargetPixels[1];
+        var target2 = mapCalibrationTargetPixels[2];
+
+        var determinant = p0.x * (p1.y - p2.y)
+            + p1.x * (p2.y - p0.y)
+            + p2.x * (p0.y - p1.y);
+
+        if (Mathf.Abs(determinant) < 0.001f)
+        {
+            anchoredPosition = default;
+            return false;
+        }
+
+        var meters = MapLatLonToMeters(latLon);
+        var xCoefficient = AffineCoefficient(p0, p1, p2, target0.x, target1.x, target2.x, determinant);
+        var yCoefficient = AffineCoefficient(p0, p1, p2, target0.y, target1.y, target2.y, determinant);
+        anchoredPosition = new Vector2(
+            xCoefficient.x * meters.x + xCoefficient.y * meters.y + xCoefficient.z,
+            yCoefficient.x * meters.x + yCoefficient.y * meters.y + yCoefficient.z);
+        return true;
+    }
+
+    private static Vector3 AffineCoefficient(Vector2 p0, Vector2 p1, Vector2 p2, float value0, float value1, float value2, float determinant)
+    {
+        return new Vector3(
+            (value0 * (p1.y - p2.y) + value1 * (p2.y - p0.y) + value2 * (p0.y - p1.y)) / determinant,
+            (value0 * (p2.x - p1.x) + value1 * (p0.x - p2.x) + value2 * (p1.x - p0.x)) / determinant,
+            (value0 * (p1.x * p2.y - p2.x * p1.y) + value1 * (p2.x * p0.y - p0.x * p2.y) + value2 * (p0.x * p1.y - p1.x * p0.y)) / determinant);
+    }
+
+    private static Vector2 ToMapNormalized(Vector2 anchoredFromCenter, Vector2 rectSize)
     {
         return new Vector2(
-            Mathf.Clamp01(anchoredFromTopLeft.x / MapDesignSize.x),
-            Mathf.Clamp01((MapDesignSize.y + anchoredFromTopLeft.y) / MapDesignSize.y));
+            0.5f + anchoredFromCenter.x / Mathf.Max(1f, rectSize.x),
+            0.5f + anchoredFromCenter.y / Mathf.Max(1f, rectSize.y));
     }
 }
 

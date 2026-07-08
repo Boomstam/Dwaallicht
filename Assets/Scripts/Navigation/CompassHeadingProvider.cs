@@ -28,7 +28,7 @@ namespace Dwaallicht.Navigation
 
         [Header("Editor Simulation")]
         [SerializeField, Range(0f, 360f)] private float simulatedHeading = 25f;
-        [SerializeField] private Vector2 simulatedLatLon = new Vector2(51.18623f, 4.22974f);
+        [SerializeField] private Vector2 simulatedLatLon = new Vector2(51.096465f, 4.344778f);
         [SerializeField] private float simulatedTurnSpeedDegrees = 100f;
         [SerializeField] private float simulatedWalkSpeedMetersPerSecond = 1.4f;
         [SerializeField] private bool keyboardSimulation = true;

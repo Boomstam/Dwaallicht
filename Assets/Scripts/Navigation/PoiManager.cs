@@ -8,7 +8,7 @@ namespace Dwaallicht.Navigation
     [AddComponentMenu("Dwaallicht/Navigation/POI Manager")]
     public sealed class PoiManager : MonoBehaviour
     {
-        [SerializeField] private bool loadSavedPois = true;
+        [SerializeField] private bool loadSavedPois = false;
         [SerializeField] private List<PointOfInterest> pois = new List<PointOfInterest>();
 
         public IReadOnlyList<PointOfInterest> Pois => pois;
@@ -123,21 +123,39 @@ namespace Dwaallicht.Navigation
         {
             pois.Add(new PointOfInterest
             {
-                title = "Startpunt",
+                title = "Steenbakkerijmuseum 't Geleeg",
                 category = "Route",
-                description = "Testpunt in het midden van de kaart.",
-                latitude = 51.18623f,
-                longitude = 4.22974f,
+                description = "Kalibratiepunt voor de kaartonderlaag.",
+                latitude = 51.094750f,
+                longitude = 4.347785f,
                 color = new Color(0.15f, 0.63f, 0.23f, 1f)
             });
             pois.Add(new PointOfInterest
             {
-                title = "Verhaalpunt",
+                title = "De Banaan",
                 category = "Verhaal",
-                description = "Voorbeeld-POI om selectie en navigatie te testen.",
-                latitude = 51.18845f,
-                longitude = 4.2255f,
+                description = "Kalibratiepunt voor de kaartonderlaag.",
+                latitude = 51.107604f,
+                longitude = 4.369738f,
                 color = new Color(0.86f, 0.08f, 0.13f, 1f)
+            });
+            pois.Add(new PointOfInterest
+            {
+                title = "Rond punt Colonel Silvertopstraat",
+                category = "Event",
+                description = "Kalibratiepunt voor de kaartonderlaag.",
+                latitude = 51.086803f,
+                longitude = 4.360948f,
+                color = new Color(1f, 0.72f, 0.08f, 1f)
+            });
+            pois.Add(new PointOfInterest
+            {
+                title = "Spoorwegbrug",
+                category = "Verificatie",
+                description = "Verificatiepunt voor de 3-punts kaartkalibratie.",
+                latitude = 51.087620f,
+                longitude = 4.355594f,
+                color = new Color(0.54f, 0.24f, 0.78f, 1f)
             });
         }
 
