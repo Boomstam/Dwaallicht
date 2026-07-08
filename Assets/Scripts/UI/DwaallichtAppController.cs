@@ -41,6 +41,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float MapTouchTapMoveThresholdDips = 24f;
     private const string PoiArFolderName = "AR";
     private const float PoiDetailContentWidth = 318f;
+    private const float PoiDetailModuleSpacing = 14f;
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
     {
         new Vector2(51.094750f, 4.347785f),
@@ -507,7 +508,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         content.pivot = new Vector2(0.5f, 1f);
         var layout = content.gameObject.AddComponent<VerticalLayoutGroup>();
         layout.padding = new RectOffset(0, 0, 0, 20);
-        layout.spacing = 14f;
+        layout.spacing = PoiDetailModuleSpacing;
         layout.childAlignment = TextAnchor.UpperCenter;
         layout.childControlWidth = true;
         layout.childControlHeight = false;
@@ -518,7 +519,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         scrollRect.content = content;
         scrollRect.viewport = viewport;
 
-        AddDetailLabel(content, selectedPoi.title, 28, FontStyle.Bold, hasArMap ? Paper : Ink, 52f);
+        AddDetailLabel(content, selectedPoi.title, 28, FontStyle.Bold, hasArMap ? Paper : Ink, 52f, TextAnchor.UpperCenter);
         if (!hasFolder)
         {
             return;
@@ -535,7 +536,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
                     AddDetailLabel(content, "Scan", 18, FontStyle.Bold, Paper, 34f);
                     break;
                 case PoiContentKind.Text:
-                    AddDetailLabel(content, entry.text, 18, FontStyle.Normal, detailColor, Mathf.Clamp(MeasureTextHeight(entry.text, 18, PoiDetailContentWidth), 80f, 520f));
+                    AddDetailLabel(content, entry.text, 18, FontStyle.Normal, detailColor, MeasurePoiTextModuleHeight(entry.text, 18));
                     break;
                 case PoiContentKind.Audio:
                     AddPoiAudioControl(content, entry.path, entry.displayName, hasArMap);
@@ -2070,12 +2071,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return true;
     }
 
-    private Text AddDetailLabel(RectTransform parent, string value, int fontSize, FontStyle style, Color color, float preferredHeight)
+    private Text AddDetailLabel(RectTransform parent, string value, int fontSize, FontStyle style, Color color, float preferredHeight, TextAnchor alignment = TextAnchor.UpperLeft)
     {
         var holder = AddRect(parent, "DetailLabel", new Vector2(0f, 1f), new Vector2(1f, 1f), Vector2.zero, new Vector2(0f, preferredHeight));
         var layoutElement = holder.gameObject.AddComponent<LayoutElement>();
         layoutElement.preferredHeight = preferredHeight;
-        var text = AddText(holder, value, fontSize, style, color, TextAnchor.UpperLeft, Vector2.zero, Vector2.one, new Vector2(4f, 0f), new Vector2(-4f, 0f));
+        var text = AddText(holder, value, fontSize, style, color, alignment, Vector2.zero, Vector2.one, new Vector2(4f, 0f), new Vector2(-4f, 0f));
         text.raycastTarget = false;
         return text;
     }
@@ -2744,7 +2745,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var lines = Mathf.Max(1, (text ?? "").Split('\n').Length);
         var wrappedCharactersPerLine = Mathf.Max(16, Mathf.FloorToInt(width / Mathf.Max(1f, fontSize * 0.48f)));
         var wrappedLines = Mathf.CeilToInt((text ?? "").Length / (float)wrappedCharactersPerLine);
-        return Mathf.Max(lines, wrappedLines) * (fontSize + 7f) + 20f;
+        return Mathf.Max(lines, wrappedLines) * (fontSize + 7f);
+    }
+
+    private static float MeasurePoiTextModuleHeight(string text, int fontSize)
+    {
+        return Mathf.Min(MeasureTextHeight(text, fontSize, PoiDetailContentWidth), 520f);
     }
 
     private static string SanitizeFileSystemName(string name)
