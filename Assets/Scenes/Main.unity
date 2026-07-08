@@ -330,20 +330,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DwaallichtAppController
   activeTab: 0
   showDeviceDebug: 1
-  showAdminPoiControls: 1
   mapUnderlayTexture: {fileID: 2800000, guid: 1762ba52a9d0cb547b9fe9e8ed4fd822, type: 3}
   mapCenterLatLon: {x: 51.096466, y: 4.344778}
-  mapUnderlayOffsetPixels: {x: 0, y: 0}
-  mapUnderlayMetersPerPixel: 2
-  mapZoomMultiplier: 1
-  mapUnderlayRotationDegrees: 0
-  useThreePointMapCalibration: 0
+  mapUnderlayOffsetPixels: {x: 58.10565, y: 26.537806}
+  mapUnderlayMetersPerPixel: 3.9213536
+  mapZoomMultiplier: 1.1036563
+  mapUnderlayRotationDegrees: 1.000061
+  useThreePointMapCalibration: 1
   mapCalibrationTargetPixels:
-  - {x: 0, y: 0}
-  - {x: 0, y: 0}
-  - {x: 0, y: 0}
+  - {x: 40.730095, y: -56.62777}
+  - {x: 488.48773, y: 346.36298}
+  - {x: 319.27145, y: -301.0084}
   showMapPoiPins: 1
-  showMapCalibrationControls: 1
+  mapCalibrationMode: 0
 --- !u!4 &1677605752
 Transform:
   m_ObjectHideFlags: 0

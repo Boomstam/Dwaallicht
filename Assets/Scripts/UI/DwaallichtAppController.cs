@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 [AddComponentMenu("Dwaallicht/App Controller")]
@@ -25,6 +26,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float MapOffsetNudgePixels = 8f;
     private const float MapScaleStep = 1.02f;
     private const float MapScrollZoomStep = 1.04f;
+    private const float MapViewScrollZoomStep = 1.12f;
     private const float MapRotationStepDegrees = 0.1f;
     private const float MapScrollRotationStepDegrees = 0.05f;
     private const float MapMinScaleBarMeters = 10f;
@@ -50,47 +52,58 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private int activeTab;
     [SerializeField]
     private bool showDeviceDebug = true;
-    [SerializeField]
-    private bool showAdminPoiControls = true;
     [Header("Map Underlay")]
     [SerializeField]
     private Texture2D mapUnderlayTexture;
     [SerializeField]
     private Vector2 mapCenterLatLon = new Vector2(51.096465f, 4.344778f);
     [SerializeField]
-    private Vector2 mapUnderlayOffsetPixels = Vector2.zero;
+    private Vector2 mapUnderlayOffsetPixels = new Vector2(58.10565f, 26.5378056f);
     [SerializeField, Min(0.01f)]
-    private float mapUnderlayMetersPerPixel = 2f;
+    private float mapUnderlayMetersPerPixel = 3.92135358f;
     [SerializeField, Min(0.05f)]
-    private float mapZoomMultiplier = 1f;
+    private float mapZoomMultiplier = 1.10365629f;
     [SerializeField]
-    private float mapUnderlayRotationDegrees;
+    private float mapUnderlayRotationDegrees = 1.000061f;
     [SerializeField]
-    private bool useThreePointMapCalibration;
+    private bool useThreePointMapCalibration = true;
     [SerializeField]
-    private Vector2[] mapCalibrationTargetPixels = new Vector2[3];
+    private Vector2[] mapCalibrationTargetPixels =
+    {
+        new Vector2(40.7300949f, -56.62777f),
+        new Vector2(488.487732f, 346.362976f),
+        new Vector2(319.271454f, -301.0084f),
+    };
     [SerializeField]
     private bool showMapPoiPins = true;
-    [SerializeField]
-    private bool showMapCalibrationControls = true;
+    [SerializeField, FormerlySerializedAs("showMapCalibrationControls")]
+    private bool mapCalibrationMode;
 
     private RectTransform contentRoot;
     private RectTransform tabRoot;
     private RectTransform compassRose;
     private RectTransform mapFacingArrow;
     private RectTransform mapViewport;
+    private RectTransform mapContentRoot;
     private RectTransform mapUnderlayRect;
     private Image appBackgroundImage;
     private Text debugText;
     private Text navigationText;
     private Text headingText;
     private Text mapCalibrationText;
+    private Text mapScaleBarText;
     private DwaallichtArScanner arScanner;
     private CompassHeadingProvider headingProvider;
     private PoiManager poiManager;
     private Font font;
     private Vector2 lastMapDragLocalPosition;
+    private Vector2 lastMapViewDragLocalPosition;
+    private Vector2 mapViewOffsetPixels;
+    private float mapViewZoomMultiplier = 1f;
+    private float lastMapPinchDistance;
     private bool isDraggingMapUnderlay;
+    private bool isDraggingMapView;
+    private bool isPinchingMapView;
     private int activeMapCalibrationHandle = -1;
     private RectTransform[] mapCalibrationHandleRects;
 
@@ -118,6 +131,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         HandleMapCalibrationHandleDrag();
         HandleMapUnderlayDrag();
         HandleMapScrollCalibration();
+        HandleMapUseGestures();
 
         if (headingProvider == null || !headingProvider.IsReady)
         {
@@ -194,10 +208,14 @@ public sealed class DwaallichtAppController : MonoBehaviour
         navigationText = null;
         headingText = null;
         mapViewport = null;
+        mapContentRoot = null;
         mapUnderlayRect = null;
         mapCalibrationText = null;
+        mapScaleBarText = null;
         mapCalibrationHandleRects = null;
         isDraggingMapUnderlay = false;
+        isDraggingMapView = false;
+        isPinchingMapView = false;
         activeMapCalibrationHandle = -1;
 
         switch (tabIds[activeTab])
@@ -321,45 +339,43 @@ public sealed class DwaallichtAppController : MonoBehaviour
         mapViewport = AddRect(map, "MapViewport", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
         var mask = mapViewport.gameObject.AddComponent<RectMask2D>();
         mask.padding = Vector4.zero;
-        AddMapUnderlay(mapViewport);
+        mapContentRoot = AddRect(mapViewport, "MapContent", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        ApplyMapViewTransform();
+        AddMapUnderlay(mapContentRoot);
 
         var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
         if (selectedPoi != null)
         {
             var selectedPosition = MapLatLonToAnchoredPosition(selectedPoi.LatLon);
-            AddPolyline(mapViewport, "RouteToSelectedPoi", Ink, 4f, new[]
+            AddPolyline(mapContentRoot, "RouteToSelectedPoi", Ink, 4f, new[]
             {
-                ToMapNormalized(MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon), mapViewport.rect.size),
-                ToMapNormalized(selectedPosition, mapViewport.rect.size),
+                ToMapNormalized(MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon), mapContentRoot.rect.size),
+                ToMapNormalized(selectedPosition, mapContentRoot.rect.size),
             });
         }
 
         if (showMapPoiPins)
         {
-            AddMapPois(mapViewport);
+            AddMapPois(mapContentRoot);
         }
 
-        if (showMapCalibrationControls)
+        if (mapCalibrationMode)
         {
-            AddMapCalibrationHandles(mapViewport);
+            AddMapCalibrationHandles(mapContentRoot);
         }
 
         var phonePosition = MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon);
-        AddCircle(mapViewport, "PhonePosition", Paper, Vector2.one * 42f, phonePosition, true, Ink, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-        mapFacingArrow = AddArrow(mapViewport, "PhoneFacingDirection", Ink, phonePosition + new Vector2(4f, 28f), new Vector2(34f, 88f), 0f);
+        AddCircle(mapContentRoot, "PhonePosition", Paper, Vector2.one * 42f, phonePosition, true, Ink, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        mapFacingArrow = AddArrow(mapContentRoot, "PhoneFacingDirection", Ink, phonePosition + new Vector2(4f, 28f), new Vector2(34f, 88f), 0f);
         AddScaleBar(map);
+        AddMapModeControls(map);
         navigationText = AddText(map, "", 15, FontStyle.Bold, Ink, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(10f, 10f), new Vector2(-10f, -600f));
         if (showDeviceDebug)
         {
             debugText = AddText(map, "", 12, FontStyle.Normal, Ink, TextAnchor.LowerLeft, Vector2.zero, Vector2.one, new Vector2(10f, 54f), new Vector2(-10f, -548f));
         }
 
-        if (showAdminPoiControls)
-        {
-            AddCommandButton(map, "POI +", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-82f, -54f), new Vector2(72f, 34f), AddPoiAhead);
-        }
-
-        if (showMapCalibrationControls)
+        if (mapCalibrationMode)
         {
             AddMapCalibrationControls(map);
         }
@@ -714,7 +730,15 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var holder = AddImage(parent, "ScaleBarPanel", TranslucentPaper, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(12f, 12f), new Vector2(132f, 36f));
         AddImage(holder, "ScaleBarTrack", TranslucentInk, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(14f, 10f), new Vector2(MapScaleBarPixels, 4f));
         AddImage(holder, "ScaleBarFill", Ink, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(14f, 10f), new Vector2(MapScaleBarPixels, 4f));
-        AddText(holder, $"{GetScaleBarMeters():0} m", 11, FontStyle.Bold, Ink, TextAnchor.UpperLeft, Vector2.zero, Vector2.one, new Vector2(14f, 14f), new Vector2(-8f, -2f));
+        mapScaleBarText = AddText(holder, $"{GetScaleBarMeters():0} m", 11, FontStyle.Bold, Ink, TextAnchor.UpperLeft, Vector2.zero, Vector2.one, new Vector2(14f, 14f), new Vector2(-8f, -2f));
+    }
+
+    private void AddMapModeControls(RectTransform parent)
+    {
+        var panel = AddImage(parent, "MapModePanel", TranslucentPaper, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -48f), new Vector2(264f, 36f));
+        AddCommandButton(panel, mapCalibrationMode ? "Use" : "Use on", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(8f, 6f), new Vector2(74f, 24f), () => SetMapCalibrationMode(false));
+        AddCommandButton(panel, mapCalibrationMode ? "Cal on" : "Cal", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(88f, 6f), new Vector2(82f, 24f), () => SetMapCalibrationMode(true));
+        AddCommandButton(panel, showMapPoiPins ? "Pins on" : "Pins off", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(176f, 6f), new Vector2(80f, 24f), ToggleMapPoiPins);
     }
 
     private void AddMapCalibrationControls(RectTransform parent)
@@ -736,7 +760,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         AddCommandButton(panel, "Reset3", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(82f, -194f), new Vector2(66f, 24f), ResetThreePointMapCalibration);
         AddCommandButton(panel, "All -", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -224f), new Vector2(66f, 24f), () => SetMapZoomMultiplier(mapZoomMultiplier / MapScaleStep));
         AddCommandButton(panel, "All +", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(82f, -224f), new Vector2(66f, 24f), () => SetMapZoomMultiplier(mapZoomMultiplier * MapScaleStep));
-        AddCommandButton(panel, showMapPoiPins ? "Pins on" : "Pins off", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(8f, -254f), new Vector2(140f, 24f), ToggleMapPoiPins);
 
         AddCommandButton(panel, "Up", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(62f, -74f), new Vector2(34f, 24f), () => NudgeMapUnderlay(new Vector2(0f, MapOffsetNudgePixels)));
         AddCommandButton(panel, "Left", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(18f, -46f), new Vector2(40f, 24f), () => NudgeMapUnderlay(new Vector2(-MapOffsetNudgePixels, 0f)));
@@ -760,7 +783,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void HandleMapCalibrationHandleDrag()
     {
-        if (tabIds[activeTab] != "M" || mapViewport == null || !showMapCalibrationControls)
+        if (tabIds[activeTab] != "M" || mapViewport == null || !mapCalibrationMode)
         {
             activeMapCalibrationHandle = -1;
             return;
@@ -769,7 +792,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointerDown(out var pointerPosition)
             && RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out var localPosition))
         {
-            activeMapCalibrationHandle = FindNearestMapCalibrationHandle(localPosition);
+            activeMapCalibrationHandle = FindNearestMapCalibrationHandle(ViewLocalToMapContentPosition(localPosition));
         }
 
         if (activeMapCalibrationHandle < 0)
@@ -790,11 +813,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return;
         }
 
-        mapCalibrationTargetPixels[activeMapCalibrationHandle] = localPosition;
+        var contentPosition = ViewLocalToMapContentPosition(localPosition);
+        mapCalibrationTargetPixels[activeMapCalibrationHandle] = contentPosition;
         useThreePointMapCalibration = true;
         if (mapCalibrationHandleRects != null && activeMapCalibrationHandle < mapCalibrationHandleRects.Length && mapCalibrationHandleRects[activeMapCalibrationHandle] != null)
         {
-            mapCalibrationHandleRects[activeMapCalibrationHandle].anchoredPosition = localPosition;
+            mapCalibrationHandleRects[activeMapCalibrationHandle].anchoredPosition = contentPosition;
         }
 
         if (mapCalibrationText != null)
@@ -824,17 +848,19 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void HandleMapUnderlayDrag()
     {
-        if (tabIds[activeTab] != "M" || mapViewport == null || !showMapCalibrationControls || activeMapCalibrationHandle >= 0)
+        if (tabIds[activeTab] != "M" || mapViewport == null || !mapCalibrationMode || activeMapCalibrationHandle >= 0)
         {
             isDraggingMapUnderlay = false;
             return;
         }
 
         if (Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointerDown(out var pointerPosition)
+            && !IsPointerOverMapControl(pointerPosition)
             && RectTransformUtility.RectangleContainsScreenPoint(mapViewport, pointerPosition))
         {
-            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out lastMapDragLocalPosition))
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out var dragStartLocalPosition))
             {
+                lastMapDragLocalPosition = ViewLocalToMapContentPosition(dragStartLocalPosition);
                 isDraggingMapUnderlay = true;
             }
         }
@@ -854,13 +880,14 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return;
         }
 
-        NudgeMapUnderlay(localPosition - lastMapDragLocalPosition);
-        lastMapDragLocalPosition = localPosition;
+        var contentPosition = ViewLocalToMapContentPosition(localPosition);
+        NudgeMapUnderlay(contentPosition - lastMapDragLocalPosition);
+        lastMapDragLocalPosition = contentPosition;
     }
 
     private void HandleMapScrollCalibration()
     {
-        if (tabIds[activeTab] != "M" || mapViewport == null)
+        if (tabIds[activeTab] != "M" || mapViewport == null || !mapCalibrationMode)
         {
             return;
         }
@@ -878,6 +905,147 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         SetMapZoomMultiplier(mapZoomMultiplier * Mathf.Pow(MapScrollZoomStep, scroll));
+    }
+
+    private void HandleMapUseGestures()
+    {
+        if (tabIds[activeTab] != "M" || mapViewport == null || mapCalibrationMode)
+        {
+            isDraggingMapView = false;
+            isPinchingMapView = false;
+            return;
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.TryGetPinch(out var pinchDistance, out var pinchCenter))
+        {
+            isDraggingMapView = false;
+            if (isPinchingMapView && lastMapPinchDistance > 1f)
+            {
+                ZoomMapView(pinchDistance / lastMapPinchDistance, pinchCenter);
+            }
+
+            lastMapPinchDistance = pinchDistance;
+            isPinchingMapView = true;
+            return;
+        }
+
+        isPinchingMapView = false;
+
+        var scroll = Dwaallicht.Input.DwaallichtInput.ReadScrollSteps();
+        if (Mathf.Abs(scroll) >= 0.001f)
+        {
+            ZoomMapView(Mathf.Pow(MapViewScrollZoomStep, scroll), GetMouseOrViewportCenterScreenPosition());
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointerDown(out var pointerPosition)
+            && !IsPointerOverMapControl(pointerPosition)
+            && RectTransformUtility.RectangleContainsScreenPoint(mapViewport, pointerPosition)
+            && RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out lastMapViewDragLocalPosition))
+        {
+            isDraggingMapView = true;
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.PrimaryPointerReleasedThisFrame())
+        {
+            isDraggingMapView = false;
+        }
+
+        if (!isDraggingMapView || !Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointer(out pointerPosition))
+        {
+            return;
+        }
+
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out var localPosition))
+        {
+            return;
+        }
+
+        mapViewOffsetPixels += localPosition - lastMapViewDragLocalPosition;
+        lastMapViewDragLocalPosition = localPosition;
+        ApplyMapViewTransform();
+    }
+
+    private void ZoomMapView(float factor, Vector2 screenPivot)
+    {
+        if (mapViewport == null || factor <= 0f)
+        {
+            return;
+        }
+
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, screenPivot, null, out var pivotLocal)
+            || !RectTransformUtility.RectangleContainsScreenPoint(mapViewport, screenPivot))
+        {
+            pivotLocal = Vector2.zero;
+        }
+
+        var previousZoom = Mathf.Max(0.0001f, mapViewZoomMultiplier);
+        var contentUnderPivot = (pivotLocal - mapViewOffsetPixels) / previousZoom;
+        mapViewZoomMultiplier *= factor;
+        ClampMapViewZoomMultiplier();
+        mapViewOffsetPixels = pivotLocal - contentUnderPivot * mapViewZoomMultiplier;
+        ApplyMapViewTransform();
+    }
+
+    private void ApplyMapViewTransform()
+    {
+        ClampMapViewZoomMultiplier();
+        if (mapContentRoot != null)
+        {
+            mapContentRoot.anchoredPosition = mapViewOffsetPixels;
+            mapContentRoot.localScale = Vector3.one * mapViewZoomMultiplier;
+        }
+
+        if (mapScaleBarText != null)
+        {
+            mapScaleBarText.text = $"{GetScaleBarMeters():0} m";
+        }
+    }
+
+    private void ClampMapViewZoomMultiplier()
+    {
+        var minZoom = GetZoomMultiplierForScaleBarMeters(MapMaxScaleBarMeters) / Mathf.Max(0.0001f, mapZoomMultiplier);
+        var maxZoom = GetZoomMultiplierForScaleBarMeters(MapMinScaleBarMeters) / Mathf.Max(0.0001f, mapZoomMultiplier);
+        mapViewZoomMultiplier = Mathf.Clamp(mapViewZoomMultiplier, Mathf.Min(minZoom, maxZoom), Mathf.Max(minZoom, maxZoom));
+    }
+
+    private Vector2 ViewLocalToMapContentPosition(Vector2 viewLocalPosition)
+    {
+        return (viewLocalPosition - mapViewOffsetPixels) / Mathf.Max(0.0001f, mapViewZoomMultiplier);
+    }
+
+    private Vector2 GetMouseOrViewportCenterScreenPosition()
+    {
+        if (Mouse.current != null)
+        {
+            return Mouse.current.position.ReadValue();
+        }
+
+        return RectTransformUtility.WorldToScreenPoint(null, mapViewport.position);
+    }
+
+    private bool IsPointerOverMapControl(Vector2 screenPosition)
+    {
+        if (EventSystem.current == null)
+        {
+            return false;
+        }
+
+        var eventData = new PointerEventData(EventSystem.current)
+        {
+            position = screenPosition,
+        };
+        var results = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(eventData, results);
+        for (var i = 0; i < results.Count; i++)
+        {
+            var button = results[i].gameObject.GetComponentInParent<Button>();
+            if (button != null && !button.gameObject.name.StartsWith("Pin"))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void NudgeMapUnderlay(Vector2 deltaPixels)
@@ -939,6 +1107,22 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private void ToggleMapPoiPins()
     {
         showMapPoiPins = !showMapPoiPins;
+        ShowTab(activeTab);
+    }
+
+    private void SetMapCalibrationMode(bool enabled)
+    {
+        mapCalibrationMode = enabled;
+        if (enabled)
+        {
+            mapViewOffsetPixels = Vector2.zero;
+            mapViewZoomMultiplier = 1f;
+        }
+
+        isDraggingMapUnderlay = false;
+        isDraggingMapView = false;
+        isPinchingMapView = false;
+        activeMapCalibrationHandle = -1;
         ShowTab(activeTab);
     }
 
@@ -1043,6 +1227,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "Rotation", mapUnderlayRotationDegrees);
         PlayerPrefs.SetInt(MapCalibrationPrefsPrefix + "UseThreePoint", useThreePointMapCalibration ? 1 : 0);
         PlayerPrefs.SetInt(MapCalibrationPrefsPrefix + "ShowPins", showMapPoiPins ? 1 : 0);
+        PlayerPrefs.SetInt(MapCalibrationPrefsPrefix + "Saved", 1);
         for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
         {
             PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "Target" + i + "X", mapCalibrationTargetPixels[i].x);
@@ -1055,6 +1240,13 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void LoadMapCalibration()
     {
+        if (!PlayerPrefs.HasKey(MapCalibrationPrefsPrefix + "Saved"))
+        {
+            EnsureMapCalibrationTargets();
+            ClampMapZoomMultiplier();
+            return;
+        }
+
         mapUnderlayOffsetPixels = new Vector2(
             PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "OffsetX", mapUnderlayOffsetPixels.x),
             PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "OffsetY", mapUnderlayOffsetPixels.y));
@@ -1095,7 +1287,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private float GetScaleBarMeters()
     {
-        return MapScaleBarPixels * mapUnderlayMetersPerPixel / Mathf.Max(0.01f, mapZoomMultiplier);
+        return MapScaleBarPixels * mapUnderlayMetersPerPixel / Mathf.Max(0.01f, mapZoomMultiplier * mapViewZoomMultiplier);
     }
 
     private void AddMapPois(RectTransform map)
@@ -1179,32 +1371,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
     {
         EnsureArScanner();
         return arScanner != null ? arScanner.DebugStatus : "AR scanner missing";
-    }
-
-    private void AddPoiAhead()
-    {
-        EnsureHeadingProvider();
-        EnsurePoiManager();
-        if (headingProvider == null || poiManager == null)
-        {
-            return;
-        }
-
-        var latLon = ProjectLatLon(headingProvider.CurrentLatLon, headingProvider.Heading, 80f);
-        poiManager.AddPoi("Device testpunt", latLon, "Event", "Aangemaakt vanuit de app-debugknop.");
-        ShowTab(activeTab);
-    }
-
-    private static Vector2 ProjectLatLon(Vector2 latLon, float bearingDegrees, float meters)
-    {
-        const float metersPerDegreeLatitude = 111320f;
-        var bearing = bearingDegrees * Mathf.Deg2Rad;
-        var northMeters = Mathf.Cos(bearing) * meters;
-        var eastMeters = Mathf.Sin(bearing) * meters;
-        var latitude = latLon.x + northMeters / metersPerDegreeLatitude;
-        var longitudeScale = Mathf.Cos(latitude * Mathf.Deg2Rad) * metersPerDegreeLatitude;
-        var longitude = latLon.y + eastMeters / Mathf.Max(1f, longitudeScale);
-        return new Vector2(latitude, longitude);
     }
 
     private Vector2 MapLatLonToAnchoredPosition(Vector2 latLon)

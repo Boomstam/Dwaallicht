@@ -58,6 +58,32 @@ namespace Dwaallicht.Input
             return Mathf.Abs(scrollY) > 1f ? scrollY / 120f : scrollY;
         }
 
+        public static bool TryGetPinch(out float distance, out Vector2 center)
+        {
+            var touchscreen = Touchscreen.current;
+            if (touchscreen == null || touchscreen.touches.Count < 2)
+            {
+                distance = 0f;
+                center = default;
+                return false;
+            }
+
+            var firstTouch = touchscreen.touches[0];
+            var secondTouch = touchscreen.touches[1];
+            if (!firstTouch.press.isPressed || !secondTouch.press.isPressed)
+            {
+                distance = 0f;
+                center = default;
+                return false;
+            }
+
+            var firstPosition = firstTouch.position.ReadValue();
+            var secondPosition = secondTouch.position.ReadValue();
+            distance = Vector2.Distance(firstPosition, secondPosition);
+            center = (firstPosition + secondPosition) * 0.5f;
+            return distance > 1f;
+        }
+
         public static bool IsAnyKeyPressed(params Key[] keys)
         {
             var keyboard = Keyboard.current;
