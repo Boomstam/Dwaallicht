@@ -62,6 +62,7 @@
     <Compile Include="Assets\Scripts\AR\DwaallichtArScanner.cs" />
     <Compile Include="Assets\Scripts\Navigation\GeoMath.cs" />
     <Compile Include="Assets\Scripts\Input\DwaallichtInput.cs" />
+    <Compile Include="Assets\Scripts\Cloud\GoogleDriveFolderSync.cs" />
     <Compile Include="Assets\Scripts\MapEngine\MapMaterials.cs" />
     <Compile Include="Assets\Scripts\Navigation\PoiMarker.cs" />
     <Compile Include="Assets\Scripts\MapEngine\TileGeometryCollector.cs" />

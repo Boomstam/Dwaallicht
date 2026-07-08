@@ -267,6 +267,62 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &887553529
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 887553531}
+  - component: {fileID: 887553530}
+  m_Layer: 0
+  m_Name: Google Drive Sync
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &887553530
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 887553529}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eecd9f9f3c285df4b92fa7fa1df15974, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Dwaallicht.Cloud.GoogleDriveFolderSync
+  folderId: 18qv9ISU9yPbRWKT4lkrr2Xq24dm8VR9b
+  authMode: 0
+  apiKey: AIzaSyCFuKKKf0dJ2nRfTWnfwhlVowz2EZRivcs
+  oauthBearerToken: 
+  recursive: 1
+  targetFolderName: DriveSync
+  syncIntoStreamingAssetsInEditor: 1
+  syncOnStart: 1
+  forceDownload: 0
+  maxFilesPerRun: 25
+  pageSize: 50
+  maxBytesPerFile: 5242880
+--- !u!4 &887553531
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 887553529}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1431062682
 GameObject:
   m_ObjectHideFlags: 0
@@ -793,3 +849,4 @@ SceneRoots:
   - {fileID: 1677605752}
   - {fileID: 753765299}
   - {fileID: 1739227348}
+  - {fileID: 887553531}
