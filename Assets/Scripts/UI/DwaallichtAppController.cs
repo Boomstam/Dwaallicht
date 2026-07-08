@@ -37,6 +37,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float MapMaxScaleBarMeters = 500f;
     private const float MapCalibrationHandleRadius = 34f;
     private const float MapClickMoveThresholdPixels = 12f;
+    private const float MapTouchTapMoveThresholdDips = 24f;
     private const string PoiTextFileStem = "Text";
     private const string PoiArFolderName = "AR";
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
@@ -801,6 +802,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         poiManager.PoisChanged += HandlePoisChanged;
+        poiManager.SelectionChanged += HandlePoiSelectionChanged;
     }
 
     private void UnsubscribeFromPoiManager()
@@ -811,10 +813,21 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         poiManager.PoisChanged -= HandlePoisChanged;
+        poiManager.SelectionChanged -= HandlePoiSelectionChanged;
         poiManager = null;
     }
 
     private void HandlePoisChanged()
+    {
+        if (!Application.isPlaying || contentRoot == null || tabIds[activeTab] != "M")
+        {
+            return;
+        }
+
+        ShowTab(activeTab);
+    }
+
+    private void HandlePoiSelectionChanged(PointOfInterest poi)
     {
         if (!Application.isPlaying || contentRoot == null || tabIds[activeTab] != "M")
         {
@@ -851,6 +864,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
             {
                 return hash;
             }
+
+            var selectedPoi = poiManager.SelectedPoi;
+            hash = hash * 31 + StableStringHash(selectedPoi != null ? selectedPoi.id : "");
 
             var pois = poiManager.Pois;
             hash = hash * 31 + (pois != null ? pois.Count : 0);
@@ -1203,12 +1219,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
             }
         }
 
-        if (Dwaallicht.Input.DwaallichtInput.PrimaryPointerReleasedThisFrame())
+        if (Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointerReleasedThisFrame(out var releasePosition, out var releasedFromTouch))
         {
             if (isMapEmptyClickCandidate && poiManager != null && poiManager.SelectedPoi != null)
             {
-                var releasePosition = GetCurrentPointerScreenPosition();
-                if (Vector2.Distance(mapEmptyClickStartScreenPosition, releasePosition) <= MapClickMoveThresholdPixels)
+                if (Vector2.Distance(mapEmptyClickStartScreenPosition, releasePosition) <= GetMapTapMoveThresholdPixels(releasedFromTouch))
                 {
                     poiManager.SelectPoi((PointOfInterest)null);
                     ShowTab(activeTab);
@@ -1341,19 +1356,15 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return false;
     }
 
-    private Vector2 GetCurrentPointerScreenPosition()
+    private static float GetMapTapMoveThresholdPixels(bool isTouch)
     {
-        if (Mouse.current != null)
+        if (!isTouch)
         {
-            return Mouse.current.position.ReadValue();
+            return MapClickMoveThresholdPixels;
         }
 
-        if (Touchscreen.current != null)
-        {
-            return Touchscreen.current.primaryTouch.position.ReadValue();
-        }
-
-        return mapEmptyClickStartScreenPosition;
+        var dpiScale = Screen.dpi > 0f ? Screen.dpi / 160f : 1.5f;
+        return Mathf.Max(MapClickMoveThresholdPixels, MapTouchTapMoveThresholdDips * dpiScale);
     }
 
     private void NudgeMapUnderlay(Vector2 deltaPixels)
@@ -1415,6 +1426,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private void ToggleMapPoiPins()
     {
         showMapPoiPins = !showMapPoiPins;
+        if (!showMapPoiPins)
+        {
+            EnsurePoiManager();
+            poiManager.SelectPoi((PointOfInterest)null);
+        }
+
         ShowTab(activeTab);
     }
 

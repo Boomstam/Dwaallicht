@@ -5,17 +5,32 @@ namespace Dwaallicht.Input
 {
     public static class DwaallichtInput
     {
+        private enum PrimaryPointerSource
+        {
+            None,
+            Mouse,
+            Touch,
+        }
+
+        private static PrimaryPointerSource activePrimaryPointerSource;
+        private static PrimaryPointerSource lastPrimaryPointerSource;
+        private static Vector2 lastPrimaryPointerPosition;
+
         public static bool TryGetPrimaryPointerDown(out Vector2 position)
         {
-            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-            {
-                position = Mouse.current.position.ReadValue();
-                return true;
-            }
-
             if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasPressedThisFrame)
             {
                 position = Touchscreen.current.primaryTouch.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Touch, position);
+                activePrimaryPointerSource = PrimaryPointerSource.Touch;
+                return true;
+            }
+
+            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            {
+                position = Mouse.current.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Mouse, position);
+                activePrimaryPointerSource = PrimaryPointerSource.Mouse;
                 return true;
             }
 
@@ -25,15 +40,37 @@ namespace Dwaallicht.Input
 
         public static bool TryGetPrimaryPointer(out Vector2 position)
         {
-            if (Mouse.current != null && Mouse.current.leftButton.isPressed)
+            if (activePrimaryPointerSource == PrimaryPointerSource.Touch
+                && Touchscreen.current != null
+                && Touchscreen.current.primaryTouch.press.isPressed)
+            {
+                position = Touchscreen.current.primaryTouch.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Touch, position);
+                return true;
+            }
+
+            if (activePrimaryPointerSource == PrimaryPointerSource.Mouse
+                && Mouse.current != null
+                && Mouse.current.leftButton.isPressed)
             {
                 position = Mouse.current.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Mouse, position);
                 return true;
             }
 
             if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.isPressed)
             {
                 position = Touchscreen.current.primaryTouch.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Touch, position);
+                activePrimaryPointerSource = PrimaryPointerSource.Touch;
+                return true;
+            }
+
+            if (Mouse.current != null && Mouse.current.leftButton.isPressed)
+            {
+                position = Mouse.current.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Mouse, position);
+                activePrimaryPointerSource = PrimaryPointerSource.Mouse;
                 return true;
             }
 
@@ -41,10 +78,56 @@ namespace Dwaallicht.Input
             return false;
         }
 
+        public static bool TryGetPrimaryPointerReleasedThisFrame(out Vector2 position, out bool wasTouch)
+        {
+            if (activePrimaryPointerSource == PrimaryPointerSource.Touch
+                && Touchscreen.current != null
+                && Touchscreen.current.primaryTouch.press.wasReleasedThisFrame)
+            {
+                position = Touchscreen.current.primaryTouch.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Touch, position);
+                activePrimaryPointerSource = PrimaryPointerSource.None;
+                wasTouch = true;
+                return true;
+            }
+
+            if (activePrimaryPointerSource == PrimaryPointerSource.Mouse
+                && Mouse.current != null
+                && Mouse.current.leftButton.wasReleasedThisFrame)
+            {
+                position = Mouse.current.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Mouse, position);
+                activePrimaryPointerSource = PrimaryPointerSource.None;
+                wasTouch = false;
+                return true;
+            }
+
+            if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasReleasedThisFrame)
+            {
+                position = Touchscreen.current.primaryTouch.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Touch, position);
+                activePrimaryPointerSource = PrimaryPointerSource.None;
+                wasTouch = true;
+                return true;
+            }
+
+            if (Mouse.current != null && Mouse.current.leftButton.wasReleasedThisFrame)
+            {
+                position = Mouse.current.position.ReadValue();
+                RememberPrimaryPointer(PrimaryPointerSource.Mouse, position);
+                activePrimaryPointerSource = PrimaryPointerSource.None;
+                wasTouch = false;
+                return true;
+            }
+
+            position = lastPrimaryPointerPosition;
+            wasTouch = lastPrimaryPointerSource == PrimaryPointerSource.Touch;
+            return false;
+        }
+
         public static bool PrimaryPointerReleasedThisFrame()
         {
-            return (Mouse.current != null && Mouse.current.leftButton.wasReleasedThisFrame)
-                || (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.wasReleasedThisFrame);
+            return TryGetPrimaryPointerReleasedThisFrame(out _, out _);
         }
 
         public static float ReadScrollSteps()
@@ -101,6 +184,12 @@ namespace Dwaallicht.Input
             }
 
             return false;
+        }
+
+        private static void RememberPrimaryPointer(PrimaryPointerSource source, Vector2 position)
+        {
+            lastPrimaryPointerSource = source;
+            lastPrimaryPointerPosition = position;
         }
     }
 }
