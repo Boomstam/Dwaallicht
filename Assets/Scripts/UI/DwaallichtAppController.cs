@@ -43,6 +43,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float PoiDetailArSceneHeight = 560f;
     private const float PoiDetailContentWidth = 318f;
     private const float PoiDetailModuleSpacing = 14f;
+    private const string CompassDirectionArrowResourcePath = "UI/Compass/CompassDirectionArrow";
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
     {
         new Vector2(51.094750f, 4.347785f),
@@ -99,6 +100,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private RectTransform contentRoot;
     private RectTransform tabRoot;
+    private RectTransform compassDirectionRose;
     private RectTransform compassRose;
     private RectTransform compassTargetNeedle;
     private RectTransform compassLiveEventNeedle;
@@ -122,6 +124,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private GoogleDriveFolderSync driveSync;
     private Font font;
     private Texture2D syncedMapUnderlayTexture;
+    private Sprite compassDirectionArrowSprite;
+    private bool compassDirectionArrowSpriteIsRuntime;
+    private bool compassDirectionArrowMissingLogged;
     private Vector2 lastMapDragLocalPosition;
     private Vector2 lastMapViewDragLocalPosition;
     private Vector2 mapEmptyClickStartScreenPosition;
@@ -154,6 +159,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         CleanupPoiAudioPlayers();
         CleanupPoiVideoPlayers();
         CleanupPoiImageAssets();
+        CleanupCompassAssets();
         UnsubscribeFromPoiManager();
 
         if (driveSync != null)
@@ -199,6 +205,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         var heading = headingProvider.Heading;
+        if (compassDirectionRose != null)
+        {
+            compassDirectionRose.localEulerAngles = new Vector3(0f, 0f, heading);
+        }
+
         if (compassRose != null)
         {
             compassRose.localEulerAngles = new Vector3(0f, 0f, heading);
@@ -263,7 +274,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
         CleanupPoiAudioPlayers();
         CleanupPoiVideoPlayers();
         CleanupPoiImageAssets();
+        CleanupCompassAssets();
         ClearChildren(contentRoot);
+        compassDirectionRose = null;
         compassRose = null;
         compassTargetNeedle = null;
         compassLiveEventNeedle = null;
@@ -384,7 +397,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
     {
         AddText(parent, "Eigenwijzer", 26, FontStyle.Normal, Ink, TextAnchor.UpperLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(28f, -90f), new Vector2(-28f, -34f));
 
-        var compass = AddRect(parent, "CompassGraphic", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(300f, 300f));
+        var compass = AddRect(parent, "CompassGraphic", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(330f, 330f));
+        compassDirectionRose = AddRect(compass, "RotatingCompassDirectionRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(330f, 330f));
+        AddCompassDirectionArrow(compassDirectionRose, "NorthSouthDirection", Green);
+
         AddCircle(compass, "OuterRing", Ink, Vector2.one * 286f, Vector2.zero, true, Ink, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         AddCircle(compass, "InnerPaper", Paper, Vector2.one * 266f, Vector2.zero, true, Paper, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
 
@@ -400,17 +416,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
             tick.localEulerAngles = new Vector3(0f, 0f, -angle);
         }
 
-        AddImage(compassRose, "NorthNeedle", Green, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 48f), new Vector2(12f, 96f));
-        AddImage(compassRose, "SouthNeedle", Green, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -36f), new Vector2(10f, 72f));
-
-        compassTargetNeedle = AddRect(compassRose, "TargetNeedle", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(260f, 260f));
-        AddImage(compassTargetNeedle, "TargetNorthNeedle", Blue, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 48f), new Vector2(12f, 96f));
-        AddImage(compassTargetNeedle, "TargetSouthNeedle", Blue, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -36f), new Vector2(10f, 72f));
+        compassTargetNeedle = AddCompassDirectionArrow(compassDirectionRose, "TargetDirection", Blue);
         compassTargetNeedle.gameObject.SetActive(false);
 
-        compassLiveEventNeedle = AddRect(compassRose, "LiveEventNeedle", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(260f, 260f));
-        AddImage(compassLiveEventNeedle, "LiveEventNorthNeedle", Red, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 48f), new Vector2(12f, 96f));
-        AddImage(compassLiveEventNeedle, "LiveEventSouthNeedle", Red, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -36f), new Vector2(10f, 72f));
+        compassLiveEventNeedle = AddCompassDirectionArrow(compassDirectionRose, "LiveEventDirection", Red);
         compassLiveEventNeedle.gameObject.SetActive(false);
 
         AddText(compassRose, "N", 28, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-24f, 78f), new Vector2(48f, 48f));
@@ -656,6 +665,56 @@ public sealed class DwaallichtAppController : MonoBehaviour
         graphic.color = color;
         arrow.localEulerAngles = new Vector3(0f, 0f, rotation);
         return arrow;
+    }
+
+    private RectTransform AddCompassDirectionArrow(RectTransform parent, string name, Color color)
+    {
+        var arrow = AddRect(parent, name, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(78f, 440f));
+        var sprite = GetCompassDirectionArrowSprite();
+        if (sprite == null)
+        {
+            return arrow;
+        }
+
+        var image = arrow.gameObject.AddComponent<Image>();
+        image.sprite = sprite;
+        image.color = color;
+        image.preserveAspect = true;
+        image.raycastTarget = false;
+        return arrow;
+    }
+
+    private Sprite GetCompassDirectionArrowSprite()
+    {
+        if (compassDirectionArrowSprite != null)
+        {
+            return compassDirectionArrowSprite;
+        }
+
+        var importedSprite = Resources.Load<Sprite>(CompassDirectionArrowResourcePath);
+        if (importedSprite != null)
+        {
+            compassDirectionArrowSprite = importedSprite;
+            compassDirectionArrowSpriteIsRuntime = false;
+            return compassDirectionArrowSprite;
+        }
+
+        var texture = Resources.Load<Texture2D>(CompassDirectionArrowResourcePath);
+        if (texture != null)
+        {
+            compassDirectionArrowSprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+            compassDirectionArrowSprite.name = texture.name;
+            compassDirectionArrowSpriteIsRuntime = true;
+            return compassDirectionArrowSprite;
+        }
+
+        if (!compassDirectionArrowMissingLogged)
+        {
+            Debug.LogWarning($"[DwaallichtAppController] Missing compass direction arrow resource at Resources/{CompassDirectionArrowResourcePath}.png.");
+            compassDirectionArrowMissingLogged = true;
+        }
+
+        return null;
     }
 
     private RectTransform AddCircle(RectTransform parent, string name, Color color, Vector2 size, Vector2 anchoredPosition, bool fillCenter, Color strokeColor, float strokeWidth)
@@ -2804,6 +2863,17 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         poiImageAssets.Clear();
+    }
+
+    private void CleanupCompassAssets()
+    {
+        if (compassDirectionArrowSprite != null && compassDirectionArrowSpriteIsRuntime)
+        {
+            Destroy(compassDirectionArrowSprite);
+        }
+
+        compassDirectionArrowSprite = null;
+        compassDirectionArrowSpriteIsRuntime = false;
     }
 
     private static bool HasRequestError(UnityWebRequest request)
