@@ -272,8 +272,6 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-fir
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.GridAndSnapModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.GridModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.HierarchyModule.dll
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.InAppPurchasingModule.dll
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.LevelPlayModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.MediaModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.MultiplayerModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.Physics2DModule.dll
@@ -501,8 +499,6 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-fir
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.GridAndSnapModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.GridModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.HierarchyModule.xml
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.InAppPurchasingModule.xml
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.LevelPlayModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.MediaModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.MultiplayerModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.Physics2DModule.xml
@@ -652,3 +648,5 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly-CSharp-firstpas
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly.67A50FFC.Up2Date
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly-CSharp-firstpass.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly-CSharp-firstpass.pdb
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.QuickInstallModule.dll
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-firstpass\UnityEditor.QuickInstallModule.xml

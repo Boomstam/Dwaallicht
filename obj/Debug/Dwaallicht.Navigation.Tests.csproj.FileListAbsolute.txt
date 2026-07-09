@@ -148,8 +148,6 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigati
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.GridAndSnapModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.GridModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.HierarchyModule.dll
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.InAppPurchasingModule.dll
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.LevelPlayModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.MediaModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.MultiplayerModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.Physics2DModule.dll
@@ -379,8 +377,6 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigati
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.GridAndSnapModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.GridModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.HierarchyModule.xml
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.InAppPurchasingModule.xml
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.LevelPlayModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.MediaModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.MultiplayerModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.Physics2DModule.xml
@@ -431,3 +427,5 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Dwaallicht.Navigation.Te
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Dwaallic.A6901173.Up2Date
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Dwaallicht.Navigation.Tests.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Dwaallicht.Navigation.Tests.pdb
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.QuickInstallModule.dll
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Dwaallicht.Navigation.Tests\UnityEditor.QuickInstallModule.xml

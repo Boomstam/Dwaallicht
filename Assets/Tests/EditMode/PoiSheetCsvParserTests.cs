@@ -48,6 +48,24 @@ public sealed class PoiSheetCsvParserTests
         Assert.That(GetField<bool>(pois[1], "hasAr"), Is.False);
     }
 
+    [Test]
+    public void TryParse_UsesStorylineForCategoryAndPinColor()
+    {
+        var csv = "NAME,LATITUDE,LONGITUDE,PUBLISH,STORYLINE\n"
+            + "Live Now,51.09475,4.34779,YES,LIVE\n"
+            + "Story One,51.1076,4.369738,YES,1\n"
+            + "Story Two,51.08762,4.355594,YES,2\n";
+
+        Assert.That(TryParse(csv, Color.red, out var pois, out var error), Is.True, error);
+        Assert.That(pois, Has.Count.EqualTo(3));
+        Assert.That(GetField<string>(pois[0], "category"), Is.EqualTo("Event"));
+        Assert.That(GetField<string>(pois[1], "category"), Is.EqualTo("Sheet"));
+        Assert.That(GetField<string>(pois[2], "category"), Is.EqualTo("Sheet"));
+        Assert.That(GetField<Color>(pois[0], "color"), Is.EqualTo(new Color(222f / 255f, 22f / 255f, 32f / 255f, 1f)));
+        Assert.That(GetField<Color>(pois[1], "color"), Is.EqualTo(new Color(255f / 255f, 203f / 255f, 34f / 255f, 1f)));
+        Assert.That(GetField<Color>(pois[2], "color"), Is.EqualTo(new Color(138f / 255f, 61f / 255f, 199f / 255f, 1f)));
+    }
+
     private static bool TryParse(string csv, Color color, out IList pois, out string error)
     {
         var method = ParserType.GetMethod("TryParse", BindingFlags.Public | BindingFlags.Static);

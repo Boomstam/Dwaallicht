@@ -22,6 +22,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private static readonly Color Green = Rgb(54, 184, 61);
     private static readonly Color Blue = Rgb(86, 177, 232);
     private static readonly Color Red = Rgb(222, 22, 32);
+    private static readonly Color Purple = Rgb(138, 61, 199);
     private static readonly Color Gold = Rgb(187, 137, 20);
     private static readonly Color Yellow = Rgb(255, 203, 34);
     private static readonly Color TranslucentPaper = new Color(248f / 255f, 248f / 255f, 246f / 255f, 0.88f);
@@ -100,6 +101,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private RectTransform tabRoot;
     private RectTransform compassRose;
     private RectTransform compassTargetNeedle;
+    private RectTransform compassLiveEventNeedle;
     private RectTransform mapFacingArrow;
     private RectTransform mapViewport;
     private RectTransform mapContentRoot;
@@ -109,7 +111,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Image appBackgroundImage;
     private Text debugText;
     private Text navigationText;
-    private Text headingText;
     private Text compassTargetDistanceText;
     private RectTransform mapLoadingPanel;
     private Text mapLoadingText;
@@ -208,11 +209,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
             mapFacingArrow.localEulerAngles = new Vector3(0f, 0f, -heading);
         }
 
-        if (headingText != null)
-        {
-            headingText.text = $"{heading:000} graden";
-        }
-
     }
 
     private void Build()
@@ -270,10 +266,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
         ClearChildren(contentRoot);
         compassRose = null;
         compassTargetNeedle = null;
+        compassLiveEventNeedle = null;
         mapFacingArrow = null;
         debugText = null;
         navigationText = null;
-        headingText = null;
         compassTargetDistanceText = null;
         mapLoadingPanel = null;
         mapLoadingText = null;
@@ -412,6 +408,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
         AddImage(compassTargetNeedle, "TargetSouthNeedle", Blue, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -36f), new Vector2(10f, 72f));
         compassTargetNeedle.gameObject.SetActive(false);
 
+        compassLiveEventNeedle = AddRect(compassRose, "LiveEventNeedle", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(260f, 260f));
+        AddImage(compassLiveEventNeedle, "LiveEventNorthNeedle", Red, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 48f), new Vector2(12f, 96f));
+        AddImage(compassLiveEventNeedle, "LiveEventSouthNeedle", Red, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -36f), new Vector2(10f, 72f));
+        compassLiveEventNeedle.gameObject.SetActive(false);
+
         AddText(compassRose, "N", 28, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-24f, 78f), new Vector2(48f, 48f));
         AddText(compassRose, "O", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(80f, -24f), new Vector2(48f, 48f));
         AddText(compassRose, "Z", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-24f, -126f), new Vector2(48f, 48f));
@@ -420,8 +421,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         AddCircle(compass, "GoldCenter", Gold, Vector2.one * 56f, Vector2.zero, true, Gold, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         compassTargetDistanceText = AddText(compass, "0 m", 18, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(76f, 40f));
         compassTargetDistanceText.gameObject.SetActive(false);
-        headingText = AddText(parent, "000 graden", 20, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 84f), new Vector2(0f, 124f));
-        debugText = AddText(parent, "", 13, FontStyle.Normal, Ink, TextAnchor.LowerLeft, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(28f, 128f), new Vector2(-28f, 210f));
         UpdateCompassTargetNavigation();
     }
 
@@ -483,9 +482,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private void BuildLegendScreen(RectTransform parent)
     {
         AddTrophy(parent, new Vector2(0f, -76f));
-        AddPin(parent, Blue, new Vector2(78f, -196f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
+        AddPin(parent, Yellow, new Vector2(78f, -196f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
         AddText(parent, "storyline 1\n2/10 completed", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -246f), new Vector2(-42f, -170f));
-        AddPin(parent, Yellow, new Vector2(78f, -314f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
+        AddPin(parent, Purple, new Vector2(78f, -314f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
         AddText(parent, "storyline 2\n0/10 completed", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -364f), new Vector2(-42f, -288f));
         AddPin(parent, Red, new Vector2(78f, -442f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
         AddText(parent, "live event", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -480f), new Vector2(-42f, -428f));
@@ -2875,6 +2874,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
             compassTargetDistanceText.gameObject.SetActive(hasTarget);
         }
 
+        UpdateCompassLiveEventNavigation();
+
         if (!hasTarget)
         {
             return;
@@ -2892,6 +2893,68 @@ public sealed class DwaallichtAppController : MonoBehaviour
         {
             compassTargetDistanceText.text = FormatDistanceMeters(distance);
         }
+    }
+
+    private void UpdateCompassLiveEventNavigation()
+    {
+        PointOfInterest liveEvent = null;
+        var hasLiveEvent = headingProvider != null
+            && headingProvider.IsReady
+            && TryGetNearestLiveEvent(out liveEvent);
+
+        if (compassLiveEventNeedle != null)
+        {
+            compassLiveEventNeedle.gameObject.SetActive(hasLiveEvent);
+        }
+
+        if (!hasLiveEvent)
+        {
+            return;
+        }
+
+        var bearing = GeoMath.BearingTo(headingProvider.CurrentLatLon, liveEvent.LatLon);
+        if (compassLiveEventNeedle != null)
+        {
+            compassLiveEventNeedle.localEulerAngles = new Vector3(0f, 0f, -bearing);
+        }
+    }
+
+    private bool TryGetNearestLiveEvent(out PointOfInterest nearestLiveEvent)
+    {
+        nearestLiveEvent = null;
+        if (poiManager == null || poiManager.Pois == null || headingProvider == null)
+        {
+            return false;
+        }
+
+        var nearestDistance = float.MaxValue;
+        var pois = poiManager.Pois;
+        for (var i = 0; i < pois.Count; i++)
+        {
+            var poi = pois[i];
+            if (!IsLiveEventPoi(poi))
+            {
+                continue;
+            }
+
+            var distance = GeoMath.DistanceMeters(headingProvider.CurrentLatLon, poi.LatLon);
+            if (distance >= nearestDistance)
+            {
+                continue;
+            }
+
+            nearestLiveEvent = poi;
+            nearestDistance = distance;
+        }
+
+        return nearestLiveEvent != null;
+    }
+
+    private static bool IsLiveEventPoi(PointOfInterest poi)
+    {
+        return poi != null
+            && poi.active
+            && string.Equals(poi.category, "Event", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatDistanceMeters(float distance)

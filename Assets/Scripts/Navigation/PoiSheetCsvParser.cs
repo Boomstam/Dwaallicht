@@ -25,6 +25,7 @@ namespace Dwaallicht.Navigation
             var longitudeIndex = FindColumn(header, "LONGITUDE", "LON", "LNG", "LENGTEGRAAD");
             var publishIndex = FindColumn(header, "PUBLISH", "PUBLICEREN", "ACTIVE");
             var arIndex = FindColumn(header, "AR", "HASAR", "HAS_AR", "HAS AR", "AUGMENTEDREALITY", "AUGMENTED REALITY");
+            var storylineIndex = FindColumn(header, "STORYLINE", "STORY", "CATEGORY", "CATEGORIE", "TYPE");
 
             if (nameIndex < 0 || latitudeIndex < 0 || longitudeIndex < 0)
             {
@@ -68,17 +69,53 @@ namespace Dwaallicht.Navigation
                 {
                     id = BuildStableId(title, latitude, longitude),
                     title = title,
-                    category = "Sheet",
+                    category = GetSheetCategory(GetField(record, storylineIndex)),
                     description = "",
                     latitude = latitude,
                     longitude = longitude,
-                    color = pinColor,
+                    color = GetSheetColor(GetField(record, storylineIndex), pinColor),
                     hasAr = arIndex >= 0 && IsPublished(GetField(record, arIndex)),
                     active = true
                 });
             }
 
             return true;
+        }
+
+        private static string GetSheetCategory(string storyline)
+        {
+            var normalized = (storyline ?? "").Trim();
+            if (string.Equals(normalized, "LIVE", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "EVENT", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Event";
+            }
+
+            return "Sheet";
+        }
+
+        private static Color GetSheetColor(string storyline, Color fallbackColor)
+        {
+            var normalized = (storyline ?? "").Trim();
+            if (string.Equals(normalized, "LIVE", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "EVENT", StringComparison.OrdinalIgnoreCase))
+            {
+                return new Color(222f / 255f, 22f / 255f, 32f / 255f, 1f);
+            }
+
+            if (normalized == "1"
+                || string.Equals(normalized, "YELLOW", StringComparison.OrdinalIgnoreCase))
+            {
+                return new Color(255f / 255f, 203f / 255f, 34f / 255f, 1f);
+            }
+
+            if (normalized == "2"
+                || string.Equals(normalized, "PURPLE", StringComparison.OrdinalIgnoreCase))
+            {
+                return new Color(138f / 255f, 61f / 255f, 199f / 255f, 1f);
+            }
+
+            return fallbackColor;
         }
 
         private static List<List<string>> ParseRecords(string csv)

@@ -273,8 +273,6 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\Uni
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.GridAndSnapModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.GridModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.HierarchyModule.dll
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.InAppPurchasingModule.dll
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.LevelPlayModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.MediaModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.MultiplayerModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.Physics2DModule.dll
@@ -503,8 +501,6 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\Uni
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.GridAndSnapModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.GridModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.HierarchyModule.xml
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.InAppPurchasingModule.xml
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.LevelPlayModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.MediaModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.MultiplayerModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.Physics2DModule.xml
@@ -654,3 +650,5 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly-CSharp.csproj.C
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly.44154EF1.Up2Date
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly-CSharp.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly-CSharp.pdb
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.QuickInstallModule.dll
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp\UnityEditor.QuickInstallModule.xml

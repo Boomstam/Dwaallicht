@@ -289,8 +289,6 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Edi
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.GridAndSnapModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.GridModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.HierarchyModule.dll
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.InAppPurchasingModule.dll
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.LevelPlayModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.MediaModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.MultiplayerModule.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.Physics2DModule.dll
@@ -533,8 +531,6 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Edi
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.GridAndSnapModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.GridModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.HierarchyModule.xml
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.InAppPurchasingModule.xml
-C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.LevelPlayModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.MediaModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.MultiplayerModule.xml
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.Physics2DModule.xml
@@ -689,3 +685,8 @@ C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly-CSharp-Editor.c
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly.1F1299F3.Up2Date
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly-CSharp-Editor.dll
 C:\Users\Gebruiker\Documents\Unity\Dwaallicht\obj\Debug\Assembly-CSharp-Editor.pdb
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\OnigwrapPlastic.dll
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\TextMateSharpPlastic.dll
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\TextMateSharpPlastic.Grammars.dll
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.QuickInstallModule.dll
+C:\Users\Gebruiker\Documents\Unity\Dwaallicht\Temp\Bin\Debug\Assembly-CSharp-Editor\UnityEditor.QuickInstallModule.xml
