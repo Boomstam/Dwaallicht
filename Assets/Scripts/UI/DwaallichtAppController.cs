@@ -422,13 +422,13 @@ public sealed class DwaallichtAppController : MonoBehaviour
         compassLiveEventNeedle = AddCompassDirectionArrow(compassDirectionRose, "LiveEventDirection", Red);
         compassLiveEventNeedle.gameObject.SetActive(false);
 
-        AddText(compassRose, "N", 28, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-24f, 78f), new Vector2(48f, 48f));
-        AddText(compassRose, "O", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(80f, -24f), new Vector2(48f, 48f));
-        AddText(compassRose, "Z", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-24f, -126f), new Vector2(48f, 48f));
-        AddText(compassRose, "W", 24, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-128f, -24f), new Vector2(48f, 48f));
+        AddCompassDirectionLetter(compassRose, "N", 0f);
+        AddCompassDirectionLetter(compassRose, "O", 90f);
+        AddCompassDirectionLetter(compassRose, "Z", 180f);
+        AddCompassDirectionLetter(compassRose, "W", 270f);
 
-        AddCircle(compass, "GoldCenter", Gold, Vector2.one * 56f, Vector2.zero, true, Gold, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-        compassTargetDistanceText = AddText(compass, "0 m", 18, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(76f, 40f));
+        AddCircle(compass, "GoldCenter", Gold, Vector2.one * 84f, Vector2.zero, true, Gold, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        compassTargetDistanceText = AddText(compass, "0 m", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(84f, 44f));
         compassTargetDistanceText.gameObject.SetActive(false);
         UpdateCompassTargetNavigation();
     }
@@ -682,6 +682,16 @@ public sealed class DwaallichtAppController : MonoBehaviour
         image.preserveAspect = true;
         image.raycastTarget = false;
         return arrow;
+    }
+
+    private Text AddCompassDirectionLetter(RectTransform parent, string value, float angle)
+    {
+        const float labelRadius = 73f;
+        var radians = angle * Mathf.Deg2Rad;
+        var position = new Vector2(Mathf.Sin(radians) * labelRadius, Mathf.Cos(radians) * labelRadius);
+        var text = AddText(parent, value, 26, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), position, new Vector2(46f, 46f));
+        text.rectTransform.localEulerAngles = new Vector3(0f, 0f, -angle);
+        return text;
     }
 
     private Sprite GetCompassDirectionArrowSprite()
