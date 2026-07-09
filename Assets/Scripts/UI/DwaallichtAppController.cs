@@ -43,6 +43,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float PoiDetailArSceneHeight = 560f;
     private const float PoiDetailContentWidth = 318f;
     private const float PoiDetailModuleSpacing = 14f;
+    private const string CompassDiskResourcePath = "UI/Compass/CompassDisk";
     private const string CompassDirectionArrowResourcePath = "UI/Compass/CompassDirectionArrow";
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
     {
@@ -124,6 +125,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private GoogleDriveFolderSync driveSync;
     private Font font;
     private Texture2D syncedMapUnderlayTexture;
+    private Sprite compassDiskSprite;
+    private bool compassDiskSpriteIsRuntime;
+    private bool compassDiskMissingLogged;
     private Sprite compassDirectionArrowSprite;
     private bool compassDirectionArrowSpriteIsRuntime;
     private bool compassDirectionArrowMissingLogged;
@@ -401,19 +405,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
         compassDirectionRose = AddRect(compass, "RotatingCompassDirectionRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(330f, 330f));
         AddCompassDirectionArrow(compassDirectionRose, "NorthSouthDirection", Green);
 
-        AddCircle(compass, "OuterRing", Ink, Vector2.one * 286f, Vector2.zero, true, Ink, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-        AddCircle(compass, "InnerPaper", Paper, Vector2.one * 266f, Vector2.zero, true, Paper, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-
-        compassRose = AddRect(compass, "RotatingCompassRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(260f, 260f));
-        for (var i = 0; i < 24; i++)
+        compassRose = AddRect(compass, "RotatingCompassRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.one * 286f);
+        if (!AddCompassDisk(compassRose))
         {
-            var major = i % 6 == 0;
-            var angle = i * 15f;
-            var radians = angle * Mathf.Deg2Rad;
-            var radius = major ? 110f : 114f;
-            var tickPosition = new Vector2(Mathf.Sin(radians) * radius, Mathf.Cos(radians) * radius);
-            var tick = AddImage(compassRose, "Tick_" + i, Ink, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), tickPosition, new Vector2(4f, major ? 26f : 14f));
-            tick.localEulerAngles = new Vector3(0f, 0f, -angle);
+            AddCompassDiskFallback(compassRose);
         }
 
         compassTargetNeedle = AddCompassDirectionArrow(compassDirectionRose, "TargetDirection", Blue);
@@ -422,12 +417,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         compassLiveEventNeedle = AddCompassDirectionArrow(compassDirectionRose, "LiveEventDirection", Red);
         compassLiveEventNeedle.gameObject.SetActive(false);
 
-        AddCompassDirectionLetter(compassRose, "N", 0f);
-        AddCompassDirectionLetter(compassRose, "O", 90f);
-        AddCompassDirectionLetter(compassRose, "Z", 180f);
-        AddCompassDirectionLetter(compassRose, "W", 270f);
-
-        AddCircle(compass, "GoldCenter", Gold, Vector2.one * 84f, Vector2.zero, true, Gold, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         compassTargetDistanceText = AddText(compass, "0 m", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(84f, 44f));
         compassTargetDistanceText.gameObject.SetActive(false);
         UpdateCompassTargetNavigation();
@@ -684,6 +673,45 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return arrow;
     }
 
+    private bool AddCompassDisk(RectTransform parent)
+    {
+        var sprite = GetCompassDiskSprite();
+        if (sprite == null)
+        {
+            return false;
+        }
+
+        var image = parent.gameObject.AddComponent<Image>();
+        image.sprite = sprite;
+        image.color = Color.white;
+        image.preserveAspect = true;
+        image.raycastTarget = false;
+        return true;
+    }
+
+    private void AddCompassDiskFallback(RectTransform parent)
+    {
+        AddCircle(parent, "OuterRing", Ink, Vector2.one * 286f, Vector2.zero, true, Ink, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        AddCircle(parent, "InnerPaper", Paper, Vector2.one * 266f, Vector2.zero, true, Paper, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+
+        for (var i = 0; i < 24; i++)
+        {
+            var major = i % 6 == 0;
+            var angle = i * 15f;
+            var radians = angle * Mathf.Deg2Rad;
+            var radius = major ? 110f : 114f;
+            var tickPosition = new Vector2(Mathf.Sin(radians) * radius, Mathf.Cos(radians) * radius);
+            var tick = AddImage(parent, "Tick_" + i, Ink, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), tickPosition, new Vector2(4f, major ? 26f : 14f));
+            tick.localEulerAngles = new Vector3(0f, 0f, -angle);
+        }
+
+        AddCompassDirectionLetter(parent, "N", 0f);
+        AddCompassDirectionLetter(parent, "O", 90f);
+        AddCompassDirectionLetter(parent, "Z", 180f);
+        AddCompassDirectionLetter(parent, "W", 270f);
+        AddCircle(parent, "GoldCenter", Gold, Vector2.one * 84f, Vector2.zero, true, Gold, 0f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+    }
+
     private Text AddCompassDirectionLetter(RectTransform parent, string value, float angle)
     {
         const float labelRadius = 73f;
@@ -692,6 +720,39 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var text = AddText(parent, value, 26, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), position, new Vector2(46f, 46f));
         text.rectTransform.localEulerAngles = new Vector3(0f, 0f, -angle);
         return text;
+    }
+
+    private Sprite GetCompassDiskSprite()
+    {
+        if (compassDiskSprite != null)
+        {
+            return compassDiskSprite;
+        }
+
+        var importedSprite = Resources.Load<Sprite>(CompassDiskResourcePath);
+        if (importedSprite != null)
+        {
+            compassDiskSprite = importedSprite;
+            compassDiskSpriteIsRuntime = false;
+            return compassDiskSprite;
+        }
+
+        var texture = Resources.Load<Texture2D>(CompassDiskResourcePath);
+        if (texture != null)
+        {
+            compassDiskSprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+            compassDiskSprite.name = texture.name;
+            compassDiskSpriteIsRuntime = true;
+            return compassDiskSprite;
+        }
+
+        if (!compassDiskMissingLogged)
+        {
+            Debug.LogWarning($"[DwaallichtAppController] Missing compass disk resource at Resources/{CompassDiskResourcePath}.png.");
+            compassDiskMissingLogged = true;
+        }
+
+        return null;
     }
 
     private Sprite GetCompassDirectionArrowSprite()
@@ -2877,6 +2938,14 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void CleanupCompassAssets()
     {
+        if (compassDiskSprite != null && compassDiskSpriteIsRuntime)
+        {
+            Destroy(compassDiskSprite);
+        }
+
+        compassDiskSprite = null;
+        compassDiskSpriteIsRuntime = false;
+
         if (compassDirectionArrowSprite != null && compassDirectionArrowSpriteIsRuntime)
         {
             Destroy(compassDirectionArrowSprite);
