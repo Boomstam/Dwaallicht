@@ -405,7 +405,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         compassDirectionRose = AddRect(compass, "RotatingCompassDirectionRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(330f, 330f));
         AddCompassDirectionArrow(compassDirectionRose, "NorthSouthDirection", Green);
 
-        compassRose = AddRect(compass, "RotatingCompassRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.one * 286f);
+        compassRose = AddRect(compass, "RotatingCompassRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.one * 257.4f);
         if (!AddCompassDisk(compassRose))
         {
             AddCompassDiskFallback(compassRose);
@@ -3108,6 +3108,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private static string FormatDistanceMeters(float distance)
     {
+        if (distance > 10000f)
+        {
+            return $"{distance / 1000f:0.0} km";
+        }
+
         return $"{distance:0} m";
     }
 
