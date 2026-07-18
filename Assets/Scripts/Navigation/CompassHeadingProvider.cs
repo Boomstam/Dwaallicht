@@ -1,6 +1,7 @@
 using System.Collections;
 using Dwaallicht.Input;
 using UnityEngine;
+using UnityInput = UnityEngine.Input;
 using UnityEngine.InputSystem;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -43,6 +44,10 @@ namespace Dwaallicht.Navigation
         private int androidLocationPermissionResponses;
         private PermissionCallbacks androidLocationPermissionCallbacks;
         private AndroidLocationBridge androidLocation;
+#endif
+
+#if UNITY_IOS && !UNITY_EDITOR
+        private DwaallichtLocationManager iosLocationManager;
 #endif
 
         public bool IsReady { get; private set; }
@@ -143,6 +148,17 @@ namespace Dwaallicht.Navigation
             }
 #endif
 
+#if UNITY_IOS && !UNITY_EDITOR
+            yield return RequestIosLocationPermission();
+
+            if (!HasIosLocationAuthorization())
+            {
+                IsReady = false;
+                Status = "Location permission denied";
+                yield break;
+            }
+#endif
+
             attitudeSensor = ResolveAttitudeSensor();
             if (attitudeSensor == null)
             {
@@ -178,6 +194,34 @@ namespace Dwaallicht.Navigation
             }
 
             CurrentLatLon = androidLocation.LatLon;
+#elif UNITY_IOS && !UNITY_EDITOR
+            if (!UnityInput.location.isEnabledByUser)
+            {
+                IsReady = false;
+                Status = "Location disabled by user";
+                yield break;
+            }
+
+            UnityInput.location.Start(1f, 1f);
+
+            var maxWaitSeconds = 12;
+            while (UnityInput.location.status == LocationServiceStatus.Initializing && maxWaitSeconds > 0)
+            {
+                yield return new WaitForSeconds(1f);
+                maxWaitSeconds--;
+            }
+
+            if (UnityInput.location.status != LocationServiceStatus.Running)
+            {
+                IsReady = false;
+                Status = UnityInput.location.status == LocationServiceStatus.Failed
+                    ? "iOS location unavailable"
+                    : "iOS location timed out";
+                yield break;
+            }
+
+            var data = UnityInput.location.lastData;
+            CurrentLatLon = new Vector2(data.latitude, data.longitude);
 #else
             CurrentLatLon = simulatedLatLon;
 #endif
@@ -251,6 +295,49 @@ namespace Dwaallicht.Navigation
         }
 #endif
 
+#if UNITY_IOS && !UNITY_EDITOR
+        private IEnumerator RequestIosLocationPermission()
+        {
+            iosLocationManager = DwaallichtLocationManager.Instance;
+            var status = iosLocationManager.GetAuthorizationStatus();
+            if (status == DwaallichtLocationManager.AuthorizationStatus.AuthorizedAlways
+                || status == DwaallichtLocationManager.AuthorizationStatus.AuthorizedWhenInUse)
+            {
+                yield break;
+            }
+
+            if (status == DwaallichtLocationManager.AuthorizationStatus.Denied
+                || status == DwaallichtLocationManager.AuthorizationStatus.Restricted)
+            {
+                yield break;
+            }
+
+            Status = "Requesting location permission";
+            iosLocationManager.RequestWhenInUseAuthorization();
+
+            float timeoutAt = Time.realtimeSinceStartup + 30f;
+            while (Time.realtimeSinceStartup < timeoutAt)
+            {
+                status = iosLocationManager.GetAuthorizationStatus();
+                if (status != DwaallichtLocationManager.AuthorizationStatus.NotDetermined)
+                {
+                    break;
+                }
+
+                yield return null;
+            }
+        }
+
+        private bool HasIosLocationAuthorization()
+        {
+            var status = iosLocationManager != null
+                ? iosLocationManager.GetAuthorizationStatus()
+                : DwaallichtLocationManager.Instance.GetAuthorizationStatus();
+            return status == DwaallichtLocationManager.AuthorizationStatus.AuthorizedAlways
+                || status == DwaallichtLocationManager.AuthorizationStatus.AuthorizedWhenInUse;
+        }
+#endif
+
         private void UpdateDeviceHeading()
         {
             if (!IsReady || attitudeSensor == null)
@@ -265,6 +352,14 @@ namespace Dwaallicht.Navigation
             if (androidLocation != null && androidLocation.HasLocation)
             {
                 CurrentLatLon = androidLocation.LatLon;
+            }
+#endif
+
+#if UNITY_IOS && !UNITY_EDITOR
+            if (UnityInput.location.status == LocationServiceStatus.Running)
+            {
+                var data = UnityInput.location.lastData;
+                CurrentLatLon = new Vector2(data.latitude, data.longitude);
             }
 #endif
         }
@@ -353,6 +448,13 @@ namespace Dwaallicht.Navigation
 #if UNITY_ANDROID && !UNITY_EDITOR
             androidLocation?.Dispose();
             androidLocation = null;
+#endif
+
+#if UNITY_IOS && !UNITY_EDITOR
+            if (UnityInput.location.isEnabledByUser)
+            {
+                UnityInput.location.Stop();
+            }
 #endif
         }
 
