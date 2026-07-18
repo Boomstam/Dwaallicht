@@ -26,6 +26,7 @@ namespace Dwaallicht.Navigation
 
         [Header("Smoothing")]
         [SerializeField, Min(0.01f)] private float smoothTime = 0.18f;
+        [SerializeField, Min(0.25f)] private float deviceRecoveryRetryInterval = 2f;
 
         [Header("Editor Simulation")]
         [SerializeField, Range(0f, 360f)] private float simulatedHeading = 25f;
@@ -37,6 +38,7 @@ namespace Dwaallicht.Navigation
         private float smoothedHeading;
         private float headingVelocity;
         private bool deviceStartupAttempted;
+        private float nextDeviceRecoveryTime;
         private AttitudeSensor attitudeSensor;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -48,9 +50,12 @@ namespace Dwaallicht.Navigation
 
 #if UNITY_IOS && !UNITY_EDITOR
         private DwaallichtLocationManager iosLocationManager;
+        private bool iosLocationStartRequested;
 #endif
 
         public bool IsReady { get; private set; }
+        public bool HasHeading { get; private set; }
+        public bool HasLocation { get; private set; }
         public bool IsSimulated => ResolveSource() == HeadingSource.Simulated;
         public float Heading => GeoMath.NormalizeDegrees(smoothedHeading);
         public float RawHeading { get; private set; }
@@ -65,6 +70,10 @@ namespace Dwaallicht.Navigation
             RawHeading = simulatedHeading;
             smoothedHeading = simulatedHeading;
             CompassMayBeUnreliable = false;
+            HasHeading = false;
+            HasLocation = false;
+            IsReady = false;
+            nextDeviceRecoveryTime = 0f;
 
             if (ResolveSource() == HeadingSource.DeviceCompass)
             {
@@ -93,6 +102,7 @@ namespace Dwaallicht.Navigation
             }
             else
             {
+                TryRecoverDeviceSensors();
                 UpdateDeviceHeading();
             }
 
@@ -139,97 +149,14 @@ namespace Dwaallicht.Navigation
 
 #if UNITY_ANDROID && !UNITY_EDITOR
             yield return RequestAndroidLocationPermission();
-
-            if (!HasAndroidLocationPermission())
-            {
-                IsReady = false;
-                Status = "Location permission denied";
-                yield break;
-            }
 #endif
 
 #if UNITY_IOS && !UNITY_EDITOR
             yield return RequestIosLocationPermission();
-
-            if (!HasIosLocationAuthorization())
-            {
-                IsReady = false;
-                Status = "Location permission denied";
-                yield break;
-            }
 #endif
 
-            attitudeSensor = ResolveAttitudeSensor();
-            if (attitudeSensor == null)
-            {
-                IsReady = false;
-                Status = "Attitude sensor unavailable";
-                yield break;
-            }
-
-            InputSystem.EnableDevice(attitudeSensor);
-            CompassMayBeUnreliable = !IsNorthReferencedAttitudeSensor(attitudeSensor);
-
-#if UNITY_ANDROID && !UNITY_EDITOR
-            androidLocation = new AndroidLocationBridge();
-            if (!androidLocation.Start(1f, 1f, out var locationStatus))
-            {
-                IsReady = false;
-                Status = locationStatus;
-                yield break;
-            }
-
-            var maxWaitSeconds = 12;
-            while (!androidLocation.HasLocation && maxWaitSeconds > 0)
-            {
-                yield return new WaitForSeconds(1f);
-                maxWaitSeconds--;
-            }
-
-            if (!androidLocation.HasLocation)
-            {
-                IsReady = false;
-                Status = "Android location unavailable";
-                yield break;
-            }
-
-            CurrentLatLon = androidLocation.LatLon;
-#elif UNITY_IOS && !UNITY_EDITOR
-            if (!UnityInput.location.isEnabledByUser)
-            {
-                IsReady = false;
-                Status = "Location disabled by user";
-                yield break;
-            }
-
-            UnityInput.location.Start(1f, 1f);
-
-            var maxWaitSeconds = 12;
-            while (UnityInput.location.status == LocationServiceStatus.Initializing && maxWaitSeconds > 0)
-            {
-                yield return new WaitForSeconds(1f);
-                maxWaitSeconds--;
-            }
-
-            if (UnityInput.location.status != LocationServiceStatus.Running)
-            {
-                IsReady = false;
-                Status = UnityInput.location.status == LocationServiceStatus.Failed
-                    ? "iOS location unavailable"
-                    : "iOS location timed out";
-                yield break;
-            }
-
-            var data = UnityInput.location.lastData;
-            CurrentLatLon = new Vector2(data.latitude, data.longitude);
-#else
-            CurrentLatLon = simulatedLatLon;
-#endif
-
-            IsReady = true;
-            Status = CompassMayBeUnreliable
-                ? "Kompas werkt mogelijk niet op deze telefoon"
-                : "Device sensors ready";
+            TryInitializeDeviceSensors(true);
+            yield break;
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -338,20 +265,117 @@ namespace Dwaallicht.Navigation
         }
 #endif
 
-        private void UpdateDeviceHeading()
+        private void TryRecoverDeviceSensors()
         {
-            if (!IsReady || attitudeSensor == null)
+            if ((HasHeading && HasLocation) || Time.unscaledTime < nextDeviceRecoveryTime)
             {
                 return;
             }
 
-            RawHeading = HeadingFromAttitude(attitudeSensor.attitude.ReadValue());
+            TryInitializeDeviceSensors(false);
+        }
+
+        private void TryInitializeDeviceSensors(bool forceRestartLocation)
+        {
+            nextDeviceRecoveryTime = Time.unscaledTime + deviceRecoveryRetryInterval;
+
+            TryInitializeHeadingSensor();
+            TryInitializeLocationService(forceRestartLocation);
+            RefreshReadinessStatus();
+        }
+
+        private void TryInitializeHeadingSensor()
+        {
+#if UNITY_IOS && !UNITY_EDITOR
+            UnityInput.compass.enabled = true;
+#endif
+
+            if (attitudeSensor != null)
+            {
+                return;
+            }
+
+            attitudeSensor = ResolveAttitudeSensor();
+            if (attitudeSensor != null)
+            {
+                InputSystem.EnableDevice(attitudeSensor);
+            }
+        }
+
+        private void TryInitializeLocationService(bool forceRestartLocation)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!HasAndroidLocationPermission())
+            {
+                return;
+            }
+
+            if (androidLocation == null)
+            {
+                androidLocation = new AndroidLocationBridge();
+                if (!androidLocation.Start(1f, 1f, out _))
+                {
+                    androidLocation.Dispose();
+                    androidLocation = null;
+                }
+            }
+#elif UNITY_IOS && !UNITY_EDITOR
+            if (!HasIosLocationAuthorization() || !UnityInput.location.isEnabledByUser)
+            {
+                return;
+            }
+
+            if (forceRestartLocation || !iosLocationStartRequested || UnityInput.location.status == LocationServiceStatus.Stopped || UnityInput.location.status == LocationServiceStatus.Failed)
+            {
+                UnityInput.location.Start(1f, 1f);
+                iosLocationStartRequested = true;
+            }
+#else
+            CurrentLatLon = simulatedLatLon;
+            HasLocation = true;
+#endif
+        }
+
+        private void UpdateDeviceHeading()
+        {
+            HasHeading = false;
+            HasLocation = false;
+            CompassMayBeUnreliable = false;
             HeadingAccuracy = -1f;
+
+#if UNITY_IOS && !UNITY_EDITOR
+            float trueHeading = UnityInput.compass.trueHeading;
+            if (IsFiniteHeading(trueHeading))
+            {
+                RawHeading = AlignIosHeading(trueHeading);
+                HeadingAccuracy = UnityInput.compass.headingAccuracy;
+                HasHeading = true;
+                CompassMayBeUnreliable = HeadingAccuracy < 0f;
+            }
+            else
+            {
+                float magneticHeading = UnityInput.compass.magneticHeading;
+                if (IsFiniteHeading(magneticHeading))
+                {
+                    RawHeading = AlignIosHeading(magneticHeading);
+                    HasHeading = true;
+                    CompassMayBeUnreliable = true;
+                }
+            }
+#endif
+
+            if (!HasHeading && attitudeSensor != null)
+            {
+                RawHeading = HeadingFromAttitude(attitudeSensor.attitude.ReadValue());
+                HasHeading = true;
+                CompassMayBeUnreliable = !IsNorthReferencedAttitudeSensor(attitudeSensor);
+            }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (androidLocation != null && androidLocation.HasLocation)
             {
                 CurrentLatLon = androidLocation.LatLon;
+                HasLocation = true;
             }
 #endif
 
@@ -359,13 +383,21 @@ namespace Dwaallicht.Navigation
             if (UnityInput.location.status == LocationServiceStatus.Running)
             {
                 var data = UnityInput.location.lastData;
-                CurrentLatLon = new Vector2(data.latitude, data.longitude);
+                if (data.timestamp > 0d)
+                {
+                    CurrentLatLon = new Vector2(data.latitude, data.longitude);
+                    HasLocation = true;
+                }
             }
 #endif
+
+            RefreshReadinessStatus();
         }
 
         private void UpdateSimulation()
         {
+            HasHeading = true;
+            HasLocation = true;
             IsReady = true;
             Status = "Editor compass simulation";
 
@@ -451,10 +483,78 @@ namespace Dwaallicht.Navigation
 #endif
 
 #if UNITY_IOS && !UNITY_EDITOR
+            iosLocationStartRequested = false;
+            UnityInput.compass.enabled = false;
             if (UnityInput.location.isEnabledByUser)
             {
                 UnityInput.location.Stop();
             }
+#endif
+        }
+
+        private void RefreshReadinessStatus()
+        {
+            IsReady = HasHeading || HasLocation;
+
+            if (HasHeading && HasLocation)
+            {
+                Status = CompassMayBeUnreliable
+                    ? "Locatie klaar, kompas gebruikt fallback"
+                    : "Device sensors ready";
+                return;
+            }
+
+            if (HasLocation)
+            {
+                Status = "Locatie klaar, wacht op kompas";
+                return;
+            }
+
+            if (HasHeading)
+            {
+                Status = "Kompas klaar, wacht op locatie";
+                return;
+            }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            Status = HasAndroidLocationPermission()
+                ? "Waiting for Android sensors"
+                : "Location permission denied";
+#elif UNITY_IOS && !UNITY_EDITOR
+            if (!HasIosLocationAuthorization())
+            {
+                Status = "Location permission denied";
+            }
+            else if (!UnityInput.location.isEnabledByUser)
+            {
+                Status = "Location disabled by user";
+            }
+            else if (UnityInput.location.status == LocationServiceStatus.Failed)
+            {
+                Status = "iOS location unavailable";
+            }
+            else
+            {
+                Status = attitudeSensor == null
+                    ? "Waiting for iOS heading"
+                    : "Waiting for iOS location";
+            }
+#else
+            Status = "Waiting for device sensors";
+#endif
+        }
+
+        private static bool IsFiniteHeading(float heading)
+        {
+            return !float.IsNaN(heading) && !float.IsInfinity(heading) && heading >= 0f;
+        }
+
+        private static float AlignIosHeading(float heading)
+        {
+#if UNITY_IOS && !UNITY_EDITOR
+            return GeoMath.NormalizeDegrees(heading + 180f);
+#else
+            return GeoMath.NormalizeDegrees(heading);
 #endif
         }
 

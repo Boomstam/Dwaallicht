@@ -52,16 +52,18 @@ namespace Dwaallicht.AR
         private void Awake()
         {
             ResolveReferences();
-            EnsureArSubsystemsRunning();
             SetScanningActive(false);
         }
 
         private void OnEnable()
         {
             ResolveReferences();
-            Subscribe();
-            SubscribeCameraFrames();
-            EnsureArSubsystemsRunning();
+            ApplySubsystemState();
+            if (scanningActive)
+            {
+                Subscribe();
+                SubscribeCameraFrames();
+            }
         }
 
         private void OnDisable()
@@ -84,22 +86,7 @@ namespace Dwaallicht.AR
             scanningActive = active;
             Debug.Log($"[DwaallichtArScanner] SetScanningActive({active}) origin={(xrOrigin != null)} session={(arSession != null)} imageManager={(trackedImageManager != null)} arCamera={(arCamera != null)} background={(arCameraBackground != null)}");
 
-            EnsureArSubsystemsRunning();
-
-            if (arSession != null)
-            {
-                arSession.enabled = true;
-            }
-
-            if (trackedImageManager != null)
-            {
-                trackedImageManager.enabled = active;
-            }
-
-            if (arCameraManager != null)
-            {
-                arCameraManager.enabled = true;
-            }
+            ApplySubsystemState();
 
             if (arCameraBackground != null)
             {
@@ -121,6 +108,8 @@ namespace Dwaallicht.AR
             }
             else
             {
+                Unsubscribe();
+                UnsubscribeCameraFrames();
                 HideCube();
                 DestroySimulation();
             }
@@ -364,16 +353,21 @@ namespace Dwaallicht.AR
             lastCameraFrameRealtime = Time.realtimeSinceStartup;
         }
 
-        private void EnsureArSubsystemsRunning()
+        private void ApplySubsystemState()
         {
             if (arSession != null)
             {
-                arSession.enabled = true;
+                arSession.enabled = scanningActive;
+            }
+
+            if (trackedImageManager != null)
+            {
+                trackedImageManager.enabled = scanningActive;
             }
 
             if (arCameraManager != null)
             {
-                arCameraManager.enabled = true;
+                arCameraManager.enabled = scanningActive;
             }
         }
 

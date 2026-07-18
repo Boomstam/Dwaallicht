@@ -192,8 +192,8 @@ public static class DwaallichtArProjectSetup
         var appCamera = GameObject.Find("App Camera")?.GetComponent<Camera>();
         AssignScannerReferences(scanner, origin, session, trackedImageManager, arCamera, cameraManager, cameraBackground, appCamera);
         scanner.SetScanningActive(false);
-        session.enabled = true;
-        cameraManager.enabled = true;
+        session.enabled = false;
+        cameraManager.enabled = false;
         trackedImageManager.enabled = false;
         cameraBackground.enabled = false;
         arCamera.enabled = false;

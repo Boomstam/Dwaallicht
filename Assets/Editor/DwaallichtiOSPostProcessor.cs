@@ -23,7 +23,8 @@ public static class DwaallichtiOSPostProcessor
                 { "NSLocationWhenInUseUsageDescription", "Dwaallicht gebruikt je locatie om nabijgelegen bezienswaardigheden te tonen." },
                 { "NSLocationAlwaysAndWhenInUseUsageDescription", "Dwaallicht gebruikt je locatie, ook op de achtergrond, om je te laten weten wanneer je in de buurt van een bezienswaardigheid bent." },
                 { "NSLocationAlwaysUsageDescription", "Dwaallicht gebruikt je locatie, ook op de achtergrond, om je te laten weten wanneer je in de buurt van een bezienswaardigheid bent." },
-                { "NSCameraUsageDescription", "Dwaallicht gebruikt de camera om bezienswaardigheden in augmented reality te tonen." }
+                { "NSCameraUsageDescription", "Dwaallicht gebruikt de camera om bezienswaardigheden in augmented reality te tonen." },
+                { "NSMotionUsageDescription", "Dwaallicht gebruikt bewegingssensoren om de kompasrichting van je telefoon te bepalen." }
             }
         },
         {
@@ -32,7 +33,8 @@ public static class DwaallichtiOSPostProcessor
                 { "NSLocationWhenInUseUsageDescription", "Dwaallicht uses your location to show nearby points of interest." },
                 { "NSLocationAlwaysAndWhenInUseUsageDescription", "Dwaallicht uses your location, including in the background, to let you know when you're near a point of interest." },
                 { "NSLocationAlwaysUsageDescription", "Dwaallicht uses your location, including in the background, to let you know when you're near a point of interest." },
-                { "NSCameraUsageDescription", "Dwaallicht uses the camera to show points of interest in augmented reality." }
+                { "NSCameraUsageDescription", "Dwaallicht uses the camera to show points of interest in augmented reality." },
+                { "NSMotionUsageDescription", "Dwaallicht uses motion sensors to determine your phone's compass heading." }
             }
         }
     };

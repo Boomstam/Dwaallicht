@@ -105,7 +105,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private RectTransform compassRose;
     private RectTransform compassTargetNeedle;
     private RectTransform compassLiveEventNeedle;
+    private RectTransform mapPhonePosition;
     private RectTransform mapFacingArrow;
+    private RectTransform mapRouteLine;
     private RectTransform mapViewport;
     private RectTransform mapContentRoot;
     private RectTransform mapUnderlayRect;
@@ -202,8 +204,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
         HandleMapUnderlayDrag();
         HandleMapScrollCalibration();
         HandleMapUseGestures();
+        RefreshMapNavigationOverlay();
 
-        if (headingProvider == null || !headingProvider.IsReady)
+        if (headingProvider == null || !headingProvider.HasHeading)
         {
             return;
         }
@@ -221,6 +224,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         if (mapFacingArrow != null)
         {
+            mapFacingArrow.gameObject.SetActive(headingProvider.HasLocation);
             mapFacingArrow.localEulerAngles = new Vector3(0f, 0f, -heading);
         }
 
@@ -284,7 +288,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
         compassRose = null;
         compassTargetNeedle = null;
         compassLiveEventNeedle = null;
+        mapPhonePosition = null;
         mapFacingArrow = null;
+        mapRouteLine = null;
         debugText = null;
         navigationText = null;
         compassTargetDistanceText = null;
@@ -440,11 +446,15 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (selectedPoi != null)
         {
             var selectedPosition = MapLatLonToAnchoredPosition(selectedPoi.LatLon);
-            AddPolyline(mapContentRoot, "RouteToSelectedPoi", Ink, 4f, new[]
+            mapRouteLine = AddPolyline(mapContentRoot, "RouteToSelectedPoi", Ink, 4f, new[]
             {
                 ToMapNormalized(MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon), mapContentRoot.rect.size),
                 ToMapNormalized(selectedPosition, mapContentRoot.rect.size),
             });
+        }
+        else
+        {
+            mapRouteLine = null;
         }
 
         if (showMapPoiPins)
@@ -463,7 +473,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         var phonePosition = MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon);
-        AddCircle(mapContentRoot, "PhonePosition", Paper, Vector2.one * 42f, phonePosition, true, Ink, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        mapPhonePosition = AddCircle(mapContentRoot, "PhonePosition", Paper, Vector2.one * 42f, phonePosition, true, Ink, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         mapFacingArrow = AddArrow(mapContentRoot, "PhoneFacingDirection", Ink, phonePosition + new Vector2(4f, 28f), new Vector2(34f, 88f), 0f);
         AddScaleBar(map);
         AddMapModeControls(map);
@@ -475,6 +485,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         AddMapLoadingIndicator(map);
         renderedMapPoiFingerprint = GetMapPoiFingerprint();
+        RefreshMapNavigationOverlay();
     }
 
     private void BuildLegendScreen(RectTransform parent)
@@ -898,8 +909,20 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private static void EnsureEventSystem()
     {
-        if (FindFirstObjectByType<EventSystem>() != null)
+        var existingEventSystem = FindFirstObjectByType<EventSystem>(FindObjectsInactive.Include);
+        if (existingEventSystem != null)
         {
+            existingEventSystem.gameObject.SetActive(true);
+            existingEventSystem.enabled = true;
+
+            var inputModule = existingEventSystem.GetComponent<InputSystemUIInputModule>();
+            if (inputModule == null)
+            {
+                inputModule = existingEventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
+            }
+
+            inputModule.enabled = true;
+            inputModule.AssignDefaultActions();
             return;
         }
 
@@ -1153,6 +1176,56 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (mapLoadingText != null)
         {
             UpdateMapLoadingIndicator();
+        }
+    }
+
+    private void RefreshMapNavigationOverlay()
+    {
+        if (headingProvider == null || mapContentRoot == null || tabIds[activeTab] != "M")
+        {
+            return;
+        }
+
+        var hasLocation = headingProvider.HasLocation;
+        var phonePosition = MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon);
+
+        if (mapPhonePosition != null)
+        {
+            mapPhonePosition.gameObject.SetActive(hasLocation);
+            if (hasLocation)
+            {
+                mapPhonePosition.anchoredPosition = phonePosition;
+            }
+        }
+
+        if (mapFacingArrow != null)
+        {
+            var hasHeading = hasLocation && headingProvider.HasHeading;
+            mapFacingArrow.gameObject.SetActive(hasHeading);
+            if (hasLocation)
+            {
+                mapFacingArrow.anchoredPosition = phonePosition + new Vector2(4f, 28f);
+            }
+        }
+
+        if (mapRouteLine != null)
+        {
+            var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
+            var hasRoute = hasLocation && selectedPoi != null;
+            mapRouteLine.gameObject.SetActive(hasRoute);
+
+            if (hasRoute)
+            {
+                var line = mapRouteLine.GetComponent<AppPolylineGraphic>();
+                if (line != null)
+                {
+                    line.SetPoints(new[]
+                    {
+                        ToMapNormalized(phonePosition, mapContentRoot.rect.size),
+                        ToMapNormalized(MapLatLonToAnchoredPosition(selectedPoi.LatLon), mapContentRoot.rect.size),
+                    });
+                }
+            }
         }
     }
 
@@ -3003,6 +3076,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return AddCompassWarning("Geen POI geselecteerd");
         }
 
+        if (!headingProvider.HasLocation)
+        {
+            return AddCompassWarning("Locatie zoeken");
+        }
+
         var poi = poiManager.SelectedPoi;
         var distance = GeoMath.DistanceMeters(headingProvider.CurrentLatLon, poi.LatLon);
         return AddCompassWarning($"{poi.title}\n{FormatDistanceMeters(distance)}");
@@ -3011,7 +3089,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private void UpdateCompassTargetNavigation()
     {
         var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
-        var hasTarget = selectedPoi != null && headingProvider != null && headingProvider.IsReady;
+        var hasTarget = selectedPoi != null
+            && headingProvider != null
+            && headingProvider.HasLocation
+            && headingProvider.HasHeading;
 
         if (compassTargetNeedle != null)
         {
@@ -3048,7 +3129,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
     {
         PointOfInterest liveEvent = null;
         var hasLiveEvent = headingProvider != null
-            && headingProvider.IsReady
+            && headingProvider.HasLocation
+            && headingProvider.HasHeading
             && TryGetNearestLiveEvent(out liveEvent);
 
         if (compassLiveEventNeedle != null)
@@ -3071,7 +3153,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private bool TryGetNearestLiveEvent(out PointOfInterest nearestLiveEvent)
     {
         nearestLiveEvent = null;
-        if (poiManager == null || poiManager.Pois == null || headingProvider == null)
+        if (poiManager == null || poiManager.Pois == null || headingProvider == null || !headingProvider.HasLocation)
         {
             return false;
         }

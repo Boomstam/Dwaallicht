@@ -190,11 +190,16 @@ namespace Dwaallicht.Navigation
 
         private void UpdateFacingArrow()
         {
-            if (headingProvider == null || !headingProvider.IsReady)
+            if (headingProvider == null || !headingProvider.HasLocation || !headingProvider.HasHeading)
             {
+                if (facingArrow != null)
+                {
+                    facingArrow.SetActive(false);
+                }
                 return;
             }
 
+            facingArrow.SetActive(true);
             var center = mapController.GeoToWorldPosition(headingProvider.CurrentLatLon, markerHeight * 3f);
             var direction = HeadingToWorldDirection(headingProvider.Heading);
             var right = Vector3.Cross(Vector3.up, direction).normalized;
@@ -210,7 +215,7 @@ namespace Dwaallicht.Navigation
 
         private void UpdateRouteLine()
         {
-            if (poiManager == null || poiManager.SelectedPoi == null || headingProvider == null || !headingProvider.IsReady)
+            if (poiManager == null || poiManager.SelectedPoi == null || headingProvider == null || !headingProvider.HasLocation)
             {
                 if (routeLine != null)
                 {
