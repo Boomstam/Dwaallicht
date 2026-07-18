@@ -1,6 +1,5 @@
 using Unity.XR.CoreUtils;
 using UnityEngine;
-using UnityEngine.Rendering;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
 
@@ -29,6 +28,8 @@ namespace Dwaallicht.AR
         private ARCameraBackground arCameraBackground;
         [SerializeField]
         private Camera appCamera;
+        [SerializeField]
+        private GameObject cubeVisualPrefab;
         [SerializeField]
         private bool simulateInEditor = true;
         [SerializeField]
@@ -230,9 +231,6 @@ namespace Dwaallicht.AR
             simulatedImage.transform.localPosition = new Vector3(0f, 0f, 0.65f);
             simulatedImage.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             simulatedImage.transform.localScale = new Vector3(ReferenceImageWidthMeters, ReferenceImageHeightMeters, 1f);
-
-            var renderer = simulatedImage.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = CreateRuntimeMaterial(new Color(0.92f, 0.92f, 0.88f, 1f));
         }
 
         private void DestroySimulation()
@@ -253,10 +251,10 @@ namespace Dwaallicht.AR
                 return;
             }
 
-            cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube = cubeVisualPrefab != null
+                ? Instantiate(cubeVisualPrefab, transform, false)
+                : GameObject.CreatePrimitive(PrimitiveType.Cube);
             cube.name = "Dwaallicht Recognition Cube";
-            var renderer = cube.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = CreateRuntimeMaterial(new Color(0.13f, 0.7f, 0.95f, 1f));
             cube.SetActive(false);
         }
 
@@ -266,16 +264,6 @@ namespace Dwaallicht.AR
             {
                 cube.SetActive(false);
             }
-        }
-
-        private static Material CreateRuntimeMaterial(Color color)
-        {
-            var shader = GraphicsSettings.defaultRenderPipeline != null
-                ? Shader.Find("Universal Render Pipeline/Lit")
-                : Shader.Find("Standard");
-            var material = new Material(shader);
-            material.color = color;
-            return material;
         }
 
         private static void DestroyUnityObject(Object target)
