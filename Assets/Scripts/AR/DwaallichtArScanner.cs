@@ -1,3 +1,8 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using Dwaallicht.Cloud;
 using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.XR.ARFoundation;
@@ -8,6 +13,8 @@ namespace Dwaallicht.AR
     [AddComponentMenu("Dwaallicht/AR/AR Scanner")]
     public sealed class DwaallichtArScanner : MonoBehaviour
     {
+        private static readonly string[] SupportedReferenceImageExtensions = { ".png", ".jpg", ".jpeg" };
+
         public const string ReferenceImageName = "Dwaallicht QR";
         public const float ReferenceImageWidthMeters = 0.078f;
         public const float ReferenceImageHeightMeters = 0.078f;
@@ -34,6 +41,17 @@ namespace Dwaallicht.AR
         private bool simulateInEditor = true;
         [SerializeField]
         private float rotationDegreesPerSecond = 55f;
+        [Header("Dynamic Reference Image")]
+        [SerializeField]
+        private bool useSyncedReferenceImage = true;
+        [SerializeField]
+        private string syncedReferenceImageFolderName = "DriveSync";
+        [SerializeField]
+        private string syncedReferenceImageSubfolder = "AR";
+        [SerializeField]
+        private string syncedReferenceImageFileName = "QRCode.jpg";
+        [SerializeField]
+        private bool reloadReferenceImageAfterDriveSync = true;
 
         private GameObject cube;
         private GameObject simulatedImage;
@@ -45,6 +63,10 @@ namespace Dwaallicht.AR
         private float lastCameraFrameRealtime = -1f;
         private Rect lastCameraViewport = new Rect(0f, 0f, 1f, 1f);
         private bool lastCameraViewportVisible = true;
+        private GoogleDriveFolderSync driveSync;
+        private Coroutine referenceImageRefreshRoutine;
+        private Texture2D runtimeReferenceImageTexture;
+        private string activeReferenceImageSource = "static";
 
         public bool IsScanningActive => scanningActive;
         public bool HasVisibleCube => cube != null && cube.activeInHierarchy;
@@ -60,10 +82,12 @@ namespace Dwaallicht.AR
         {
             ResolveReferences();
             ApplySubsystemState();
+            SubscribeToDriveSync();
             if (scanningActive)
             {
                 Subscribe();
                 SubscribeCameraFrames();
+                BeginReferenceImageRefresh();
             }
         }
 
@@ -71,6 +95,17 @@ namespace Dwaallicht.AR
         {
             Unsubscribe();
             UnsubscribeCameraFrames();
+            UnsubscribeFromDriveSync();
+            StopReferenceImageRefresh();
+        }
+
+        private void OnDestroy()
+        {
+            if (runtimeReferenceImageTexture != null)
+            {
+                DestroyUnityObject(runtimeReferenceImageTexture);
+                runtimeReferenceImageTexture = null;
+            }
         }
 
         private void Update()
@@ -105,12 +140,15 @@ namespace Dwaallicht.AR
             {
                 Subscribe();
                 SubscribeCameraFrames();
+                SubscribeToDriveSync();
+                BeginReferenceImageRefresh();
                 StartEditorSimulationIfNeeded();
             }
             else
             {
                 Unsubscribe();
                 UnsubscribeCameraFrames();
+                StopReferenceImageRefresh();
                 HideCube();
                 DestroySimulation();
             }
@@ -231,6 +269,15 @@ namespace Dwaallicht.AR
             simulatedImage.transform.localPosition = new Vector3(0f, 0f, 0.65f);
             simulatedImage.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
             simulatedImage.transform.localScale = new Vector3(ReferenceImageWidthMeters, ReferenceImageHeightMeters, 1f);
+
+            var renderer = simulatedImage.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                if (runtimeReferenceImageTexture != null)
+                {
+                    renderer.sharedMaterial.mainTexture = runtimeReferenceImageTexture;
+                }
+            }
         }
 
         private void DestroySimulation()
@@ -266,7 +313,7 @@ namespace Dwaallicht.AR
             }
         }
 
-        private static void DestroyUnityObject(Object target)
+        private static void DestroyUnityObject(UnityEngine.Object target)
         {
             if (target == null)
             {
@@ -280,6 +327,290 @@ namespace Dwaallicht.AR
             else
             {
                 DestroyImmediate(target);
+            }
+        }
+
+        private void SubscribeToDriveSync()
+        {
+            if (!reloadReferenceImageAfterDriveSync || driveSync != null)
+            {
+                return;
+            }
+
+            driveSync = FindFirstObjectByType<GoogleDriveFolderSync>();
+            if (driveSync != null)
+            {
+                driveSync.SyncFinished += HandleDriveSyncFinished;
+            }
+        }
+
+        private void UnsubscribeFromDriveSync()
+        {
+            if (driveSync == null)
+            {
+                return;
+            }
+
+            driveSync.SyncFinished -= HandleDriveSyncFinished;
+            driveSync = null;
+        }
+
+        private void HandleDriveSyncFinished(bool success)
+        {
+            if (success && scanningActive)
+            {
+                BeginReferenceImageRefresh();
+            }
+        }
+
+        private void BeginReferenceImageRefresh()
+        {
+            if (!useSyncedReferenceImage || !isActiveAndEnabled)
+            {
+                return;
+            }
+
+            StopReferenceImageRefresh();
+            referenceImageRefreshRoutine = StartCoroutine(RefreshReferenceImageLibraryRoutine());
+        }
+
+        private void StopReferenceImageRefresh()
+        {
+            if (referenceImageRefreshRoutine == null)
+            {
+                return;
+            }
+
+            StopCoroutine(referenceImageRefreshRoutine);
+            referenceImageRefreshRoutine = null;
+        }
+
+        private IEnumerator RefreshReferenceImageLibraryRoutine()
+        {
+            try
+            {
+                ResolveReferences();
+
+                if (trackedImageManager == null)
+                {
+                    yield break;
+                }
+
+                var syncedImagePath = FindReferenceImagePath();
+                if (string.IsNullOrEmpty(syncedImagePath))
+                {
+                    activeReferenceImageSource = "static";
+                    yield break;
+                }
+
+                const float waitTimeoutSeconds = 12f;
+                var waitDeadline = Time.realtimeSinceStartup + waitTimeoutSeconds;
+                while (scanningActive
+                       && isActiveAndEnabled
+                       && ARSession.state < ARSessionState.Ready
+                       && Time.realtimeSinceStartup < waitDeadline)
+                {
+                    yield return null;
+                }
+
+                if (!scanningActive || !isActiveAndEnabled)
+                {
+                    yield break;
+                }
+
+                if (ARSession.state < ARSessionState.Ready)
+                {
+                    Debug.LogWarning($"[DwaallichtArScanner] AR session did not reach a ready state in time, keeping the static reference image library. State={ARSession.state}");
+                    activeReferenceImageSource = "static";
+                    yield break;
+                }
+
+                RuntimeReferenceImageLibrary runtimeLibrary;
+                try
+                {
+                    runtimeLibrary = trackedImageManager.CreateRuntimeLibrary();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[DwaallichtArScanner] Could not create a runtime reference image library: {ex.Message}");
+                    activeReferenceImageSource = "static";
+                    yield break;
+                }
+
+                if (!(runtimeLibrary is MutableRuntimeReferenceImageLibrary mutableLibrary))
+                {
+                    Debug.LogWarning("[DwaallichtArScanner] This device does not support mutable runtime reference image libraries, keeping the static reference image library.");
+                    activeReferenceImageSource = "static";
+                    yield break;
+                }
+
+                var texture = TryLoadReferenceImageTexture(syncedImagePath);
+                if (texture == null)
+                {
+                    activeReferenceImageSource = "static";
+                    yield break;
+                }
+
+                AddReferenceImageJobState addImageJobState;
+                try
+                {
+                    addImageJobState = mutableLibrary.ScheduleAddImageWithValidationJob(texture, ReferenceImageName, ReferenceImageWidthMeters);
+                }
+                catch (Exception ex)
+                {
+                    DestroyUnityObject(texture);
+                    Debug.LogWarning($"[DwaallichtArScanner] Could not add synced reference image '{syncedImagePath}' to the runtime library: {ex.Message}");
+                    activeReferenceImageSource = "static";
+                    yield break;
+                }
+
+                while (!addImageJobState.jobHandle.IsCompleted)
+                {
+                    yield return null;
+                }
+
+                addImageJobState.jobHandle.Complete();
+                if (addImageJobState.status != AddReferenceImageJobStatus.Success)
+                {
+                    DestroyUnityObject(texture);
+                    Debug.LogWarning($"[DwaallichtArScanner] Runtime reference image job failed for '{syncedImagePath}' with status {addImageJobState.status}. Keeping the static reference image library.");
+                    activeReferenceImageSource = "static";
+                    yield break;
+                }
+
+                var previousTexture = runtimeReferenceImageTexture;
+                runtimeReferenceImageTexture = texture;
+                activeReferenceImageSource = syncedImagePath;
+                HideCube();
+                trackedImageManager.referenceLibrary = runtimeLibrary;
+                Debug.Log($"[DwaallichtArScanner] Using synced reference image from {syncedImagePath}.");
+
+                if (previousTexture != null && previousTexture != runtimeReferenceImageTexture)
+                {
+                    DestroyUnityObject(previousTexture);
+                }
+
+                if (simulatedImage != null)
+                {
+                    DestroySimulation();
+                    StartEditorSimulationIfNeeded();
+                }
+            }
+            finally
+            {
+                referenceImageRefreshRoutine = null;
+            }
+        }
+
+        private string FindReferenceImagePath()
+        {
+            foreach (var candidatePath in GetPreferredReferenceImagePaths())
+            {
+                if (!string.IsNullOrWhiteSpace(candidatePath) && !candidatePath.Contains("://") && File.Exists(candidatePath))
+                {
+                    return candidatePath;
+                }
+            }
+
+            foreach (var rootPath in GetDriveRootCandidatePaths())
+            {
+                if (string.IsNullOrWhiteSpace(rootPath) || rootPath.Contains("://"))
+                {
+                    continue;
+                }
+
+                var folderPath = Path.Combine(rootPath, syncedReferenceImageSubfolder);
+                if (!Directory.Exists(folderPath))
+                {
+                    continue;
+                }
+
+                var files = Directory.GetFiles(folderPath, "*", SearchOption.TopDirectoryOnly);
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < files.Length; i++)
+                {
+                    if (IsSupportedReferenceImagePath(files[i]))
+                    {
+                        return files[i];
+                    }
+                }
+            }
+
+            return "";
+        }
+
+        private IEnumerable<string> GetPreferredReferenceImagePaths()
+        {
+            if (string.IsNullOrWhiteSpace(syncedReferenceImageFileName))
+            {
+                yield break;
+            }
+
+            foreach (var rootPath in GetDriveRootCandidatePaths())
+            {
+                if (string.IsNullOrWhiteSpace(rootPath))
+                {
+                    continue;
+                }
+
+                yield return Path.Combine(rootPath, syncedReferenceImageSubfolder, syncedReferenceImageFileName);
+            }
+        }
+
+        private IEnumerable<string> GetDriveRootCandidatePaths()
+        {
+            if (driveSync != null)
+            {
+                yield return driveSync.LocalRootPath;
+            }
+
+            yield return Path.Combine(Application.persistentDataPath, syncedReferenceImageFolderName);
+            yield return Path.Combine(Application.streamingAssetsPath, syncedReferenceImageFolderName);
+        }
+
+        private static bool IsSupportedReferenceImagePath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            var extension = Path.GetExtension(path);
+            for (var i = 0; i < SupportedReferenceImageExtensions.Length; i++)
+            {
+                if (string.Equals(extension, SupportedReferenceImageExtensions[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static Texture2D TryLoadReferenceImageTexture(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || path.Contains("://") || !File.Exists(path))
+            {
+                return null;
+            }
+
+            try
+            {
+                var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!ImageConversion.LoadImage(texture, File.ReadAllBytes(path), false))
+                {
+                    DestroyUnityObject(texture);
+                    Debug.LogWarning($"[DwaallichtArScanner] Could not decode synced reference image from {path}.");
+                    return null;
+                }
+
+                texture.name = Path.GetFileNameWithoutExtension(path);
+                return texture;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[DwaallichtArScanner] Could not load synced reference image {path}: {ex.Message}");
+                return null;
             }
         }
 
@@ -477,7 +808,8 @@ namespace Dwaallicht.AR
                    $"origin {originStatus}  session component {sessionStatus}  images {imageStatus}\n" +
                    $"camera {arCameraStatus}  manager {cameraManagerStatus}\n" +
                    $"frames {cameraFrameCount}  tex {lastCameraTextureCount}  age {frameAge}\n" +
-                   $"background {backgroundStatus}";
+                   $"background {backgroundStatus}\n" +
+                   $"reference {activeReferenceImageSource}";
         }
 
         private static string EnabledStatus(bool enabled)
