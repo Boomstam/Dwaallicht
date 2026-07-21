@@ -347,7 +347,7 @@ namespace Dwaallicht.Navigation
             float trueHeading = UnityInput.compass.trueHeading;
             if (IsFiniteHeading(trueHeading))
             {
-                RawHeading = AlignIosHeading(trueHeading);
+                RawHeading = GeoMath.NormalizeDegrees(trueHeading);
                 HeadingAccuracy = UnityInput.compass.headingAccuracy;
                 HasHeading = true;
                 CompassMayBeUnreliable = HeadingAccuracy < 0f;
@@ -357,7 +357,7 @@ namespace Dwaallicht.Navigation
                 float magneticHeading = UnityInput.compass.magneticHeading;
                 if (IsFiniteHeading(magneticHeading))
                 {
-                    RawHeading = AlignIosHeading(magneticHeading);
+                    RawHeading = GeoMath.NormalizeDegrees(magneticHeading);
                     HasHeading = true;
                     CompassMayBeUnreliable = true;
                 }
@@ -547,15 +547,6 @@ namespace Dwaallicht.Navigation
         private static bool IsFiniteHeading(float heading)
         {
             return !float.IsNaN(heading) && !float.IsInfinity(heading) && heading >= 0f;
-        }
-
-        private static float AlignIosHeading(float heading)
-        {
-#if UNITY_IOS && !UNITY_EDITOR
-            return GeoMath.NormalizeDegrees(heading + 180f);
-#else
-            return GeoMath.NormalizeDegrees(heading);
-#endif
         }
 
         private static float HeadingFromAttitude(Quaternion attitude)
