@@ -19,8 +19,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private static readonly Color AppBackground = Rgb(229, 229, 226);
     private static readonly Color Ink = Rgb(32, 30, 31);
     private static readonly Color Paper = Rgb(248, 248, 246);
-    private static readonly Color Green = Rgb(54, 184, 61);
-    private static readonly Color Blue = Rgb(86, 177, 232);
     private static readonly Color Red = Rgb(222, 22, 32);
     private static readonly Color Purple = Rgb(138, 61, 199);
     private static readonly Color Gold = Rgb(187, 137, 20);
@@ -46,6 +44,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float CompassGraphicScale = 1.21f;
     private const string CompassDiskFolderPath = "UI";
     private const string CompassDiskFileName = "windroos.png";
+    private const string CompassTargetArrowFolderPath = "UI";
+    private const string CompassTargetArrowFileName = "arrow.png";
+    private const float CompassTargetArrowHeight = 330f;
     private const string CompassDiskResourcePath = "UI/Compass/CompassDisk";
     private const string CompassDirectionArrowResourcePath = "UI/Compass/CompassDirectionArrow";
     private const string TabButtonFolderPath = "UI/Buttons";
@@ -137,6 +138,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Texture2D compassDiskTexture;
     private bool compassDiskSpriteIsRuntime;
     private bool compassDiskMissingLogged;
+    private Sprite compassTargetArrowSprite;
+    private Texture2D compassTargetArrowTexture;
+    private bool compassTargetArrowMissingLogged;
     private Sprite compassDirectionArrowSprite;
     private bool compassDirectionArrowSpriteIsRuntime;
     private bool compassDirectionArrowMissingLogged;
@@ -456,7 +460,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var compass = AddRect(parent, "CompassGraphic", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(330f, 330f));
         compass.localScale = Vector3.one * CompassGraphicScale;
         compassDirectionRose = AddRect(compass, "RotatingCompassDirectionRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(330f, 330f));
-        AddCompassDirectionArrow(compassDirectionRose, "NorthSouthDirection", Green);
 
         compassRose = AddRect(compass, "RotatingCompassRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.one * 257.4f);
         if (!AddCompassDisk(compassRose))
@@ -464,7 +467,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
             AddCompassDiskFallback(compassRose);
         }
 
-        compassTargetNeedle = AddCompassDirectionArrow(compassDirectionRose, "TargetDirection", Blue);
+        // Render the directional arrows above the compass disk.
+        compassDirectionRose.SetAsLastSibling();
+        compassTargetNeedle = AddCompassTargetArrow(compassDirectionRose);
         compassTargetNeedle.gameObject.SetActive(false);
 
         compassLiveEventNeedle = AddCompassDirectionArrow(compassDirectionRose, "LiveEventDirection", Red);
@@ -731,6 +736,30 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return arrow;
     }
 
+    private RectTransform AddCompassTargetArrow(RectTransform parent)
+    {
+        var sprite = GetCompassTargetArrowSprite();
+        var size = new Vector2(CompassTargetArrowHeight, CompassTargetArrowHeight);
+        if (sprite != null)
+        {
+            size.x = CompassTargetArrowHeight * sprite.rect.width / sprite.rect.height;
+        }
+
+        // The parent is centered on the compass and inherits its 121% scale.
+        var arrow = AddRect(parent, "TargetDirection", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, size);
+        if (sprite == null)
+        {
+            return arrow;
+        }
+
+        var image = arrow.gameObject.AddComponent<Image>();
+        image.sprite = sprite;
+        image.color = Color.white;
+        image.preserveAspect = true;
+        image.raycastTarget = false;
+        return arrow;
+    }
+
     private bool AddCompassDisk(RectTransform parent)
     {
         var sprite = GetCompassDiskSprite();
@@ -849,6 +878,61 @@ public sealed class DwaallichtAppController : MonoBehaviour
         catch (Exception ex)
         {
             Debug.LogWarning($"[DwaallichtAppController] Could not load compass disk image {path}: {ex.Message}");
+            return false;
+        }
+    }
+
+    private Sprite GetCompassTargetArrowSprite()
+    {
+        if (compassTargetArrowSprite != null)
+        {
+            return compassTargetArrowSprite;
+        }
+
+        foreach (var rootPath in GetDriveRootCandidatePaths())
+        {
+            var path = Path.Combine(rootPath, CompassTargetArrowFolderPath, CompassTargetArrowFileName);
+            if (TryLoadCompassTargetArrowSprite(path))
+            {
+                return compassTargetArrowSprite;
+            }
+        }
+
+        if (!compassTargetArrowMissingLogged)
+        {
+            Debug.LogWarning($"[DwaallichtAppController] Missing target arrow at DriveSync/{CompassTargetArrowFolderPath}/{CompassTargetArrowFileName}.");
+            compassTargetArrowMissingLogged = true;
+        }
+
+        return null;
+    }
+
+    private bool TryLoadCompassTargetArrowSprite(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Contains("://") || !File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!ImageConversion.LoadImage(texture, File.ReadAllBytes(path), false))
+            {
+                Destroy(texture);
+                Debug.LogWarning($"[DwaallichtAppController] Could not decode target arrow image from {path}.");
+                return false;
+            }
+
+            texture.name = Path.GetFileNameWithoutExtension(path);
+            compassTargetArrowTexture = texture;
+            compassTargetArrowSprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+            compassTargetArrowSprite.name = texture.name;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[DwaallichtAppController] Could not load target arrow image {path}: {ex.Message}");
             return false;
         }
     }
@@ -3191,6 +3275,18 @@ public sealed class DwaallichtAppController : MonoBehaviour
         {
             Destroy(compassDiskTexture);
             compassDiskTexture = null;
+        }
+
+        if (compassTargetArrowSprite != null)
+        {
+            Destroy(compassTargetArrowSprite);
+            compassTargetArrowSprite = null;
+        }
+
+        if (compassTargetArrowTexture != null)
+        {
+            Destroy(compassTargetArrowTexture);
+            compassTargetArrowTexture = null;
         }
 
         if (compassDirectionArrowSprite != null && compassDirectionArrowSpriteIsRuntime)
