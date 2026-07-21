@@ -3,7 +3,7 @@
         {
             "driveId": "1iHJgNwz2Z72-ocqmMbC8serXXmRRF4qc4W7WguTUSFA",
             "localPath": "Points of Interest.csv",
-            "modifiedTime": "2026-07-09T01:32:42.123Z",
+            "modifiedTime": "2026-07-09T11:16:47.421Z",
             "md5Checksum": "",
             "exportMimeType": "text/csv"
         },
@@ -111,6 +111,76 @@
             "modifiedTime": "2026-07-08T20:03:54.503Z",
             "md5Checksum": "",
             "exportMimeType": "text/plain"
+        },
+        {
+            "driveId": "1iBoduDr4jFwWSXegm_bVWGGJhYZsq_ft3CLKbB8sQOU",
+            "localPath": "Gloriette/1. Kopie van Tekst test.txt",
+            "modifiedTime": "2026-07-09T11:19:29.971Z",
+            "md5Checksum": "",
+            "exportMimeType": "text/plain"
+        },
+        {
+            "driveId": "12XRnUKxNBHUJinAWNC4DCH9cI57DHQtbKhHDjf7bzKY",
+            "localPath": "Gloriette/2. Tekst test.txt",
+            "modifiedTime": "2026-07-09T11:19:44.914Z",
+            "md5Checksum": "",
+            "exportMimeType": "text/plain"
+        },
+        {
+            "driveId": "17TYtuayQ2gt6HEAeO4AOUoVduMg1uIqq",
+            "localPath": "Graphics Kanter/CompassDirectionArrow.png",
+            "modifiedTime": "2026-07-09T00:51:21.000Z",
+            "md5Checksum": "4d30cb98b0c75329c76980d71a5ad309",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1DnlQUE5qiOhSywCwwGZ3TWotEas8Q2TL",
+            "localPath": "Graphics Kanter/CompassDisk.png",
+            "modifiedTime": "2026-07-09T01:10:41.000Z",
+            "md5Checksum": "7753872b4b7cbd5a015e89a3c0763e9a",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1YawBnL3lWH6OK_hHmtgqrNqyU5NJACij",
+            "localPath": "Graphics Kanter/GFX_v1_png/arrow.png",
+            "modifiedTime": "2026-07-21T18:12:55.000Z",
+            "md5Checksum": "adb7cca5550b296fe860e6450732def0",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1CCn-QMTPwV4RT7PnnsjZnQzBV7zZ6wbn",
+            "localPath": "Graphics Kanter/GFX_v1_png/button1.png",
+            "modifiedTime": "2026-07-21T18:13:16.000Z",
+            "md5Checksum": "493164c70a678e21af8a8d160e170614",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1inqSHVG0CvAgRYDnjS2Cr78k4WYM-7TT",
+            "localPath": "Graphics Kanter/GFX_v1_png/button2.png",
+            "modifiedTime": "2026-07-21T18:14:05.000Z",
+            "md5Checksum": "004575b47d169897fa1077271e6d7ee9",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "155sk1X6YmAL5Nu47B7zvV6jWrp9qkZFD",
+            "localPath": "Graphics Kanter/GFX_v1_png/button3.png",
+            "modifiedTime": "2026-07-21T18:13:52.000Z",
+            "md5Checksum": "da176823a5af45d3ca8524df48d1d495",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1Z6POOfzkJrFzj4OkUsdRG3m77o0ewcy4",
+            "localPath": "Graphics Kanter/GFX_v1_png/button4.png",
+            "modifiedTime": "2026-07-21T18:13:38.000Z",
+            "md5Checksum": "06abb38b06d9ee14485b78e44839e09f",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1gsvW1sptwHK8GvQo9LYJUtmAUy3VEj6A",
+            "localPath": "Graphics Kanter/GFX_v1_png/windroos.png",
+            "modifiedTime": "2026-07-21T18:11:58.000Z",
+            "md5Checksum": "8b9f992a5e49a6418e6c7f2732eb7eb3",
+            "exportMimeType": ""
         }
     ]
 }
