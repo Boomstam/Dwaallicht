@@ -3,7 +3,7 @@
         {
             "driveId": "1iHJgNwz2Z72-ocqmMbC8serXXmRRF4qc4W7WguTUSFA",
             "localPath": "Points of Interest.csv",
-            "modifiedTime": "2026-07-09T11:16:47.421Z",
+            "modifiedTime": "2026-07-21T20:31:18.811Z",
             "md5Checksum": "",
             "exportMimeType": "text/csv"
         },
@@ -149,28 +149,28 @@
         },
         {
             "driveId": "1CCn-QMTPwV4RT7PnnsjZnQzBV7zZ6wbn",
-            "localPath": "Graphics Kanter/GFX_v1_png/button1.png",
+            "localPath": "UI/Buttons/button1.png",
             "modifiedTime": "2026-07-21T18:13:16.000Z",
             "md5Checksum": "493164c70a678e21af8a8d160e170614",
             "exportMimeType": ""
         },
         {
             "driveId": "1inqSHVG0CvAgRYDnjS2Cr78k4WYM-7TT",
-            "localPath": "Graphics Kanter/GFX_v1_png/button2.png",
+            "localPath": "UI/Buttons/button2.png",
             "modifiedTime": "2026-07-21T18:14:05.000Z",
             "md5Checksum": "004575b47d169897fa1077271e6d7ee9",
             "exportMimeType": ""
         },
         {
             "driveId": "155sk1X6YmAL5Nu47B7zvV6jWrp9qkZFD",
-            "localPath": "Graphics Kanter/GFX_v1_png/button3.png",
+            "localPath": "UI/Buttons/button3.png",
             "modifiedTime": "2026-07-21T18:13:52.000Z",
             "md5Checksum": "da176823a5af45d3ca8524df48d1d495",
             "exportMimeType": ""
         },
         {
             "driveId": "1Z6POOfzkJrFzj4OkUsdRG3m77o0ewcy4",
-            "localPath": "Graphics Kanter/GFX_v1_png/button4.png",
+            "localPath": "UI/Buttons/button4.png",
             "modifiedTime": "2026-07-21T18:13:38.000Z",
             "md5Checksum": "06abb38b06d9ee14485b78e44839e09f",
             "exportMimeType": ""

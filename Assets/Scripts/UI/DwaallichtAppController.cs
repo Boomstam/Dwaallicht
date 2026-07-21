@@ -45,6 +45,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float PoiDetailModuleSpacing = 14f;
     private const string CompassDiskResourcePath = "UI/Compass/CompassDisk";
     private const string CompassDirectionArrowResourcePath = "UI/Compass/CompassDirectionArrow";
+    private const string TabButtonFolderPath = "UI/Buttons";
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
     {
         new Vector2(51.094750f, 4.347785f),
@@ -60,6 +61,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private readonly string[] tabIds = { "K", "M", "L", "S" };
     private readonly Dictionary<string, Button> buttons = new Dictionary<string, Button>();
+    private readonly Sprite[] tabButtonSprites = new Sprite[4];
+    private readonly List<UnityEngine.Object> tabButtonAssets = new List<UnityEngine.Object>();
     private readonly List<PoiAudioPlayer> poiAudioPlayers = new List<PoiAudioPlayer>();
     private readonly List<PoiVideoPlayer> poiVideoPlayers = new List<PoiVideoPlayer>();
     private readonly List<UnityEngine.Object> poiImageAssets = new List<UnityEngine.Object>();
@@ -157,6 +160,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         LockMobilePortraitOrientation();
         SubscribeToDriveSync();
         TryLoadSyncedMapUnderlay();
+        TryLoadTabButtonSprites();
         Build();
     }
 
@@ -166,6 +170,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         CleanupPoiVideoPlayers();
         CleanupPoiImageAssets();
         CleanupCompassAssets();
+        CleanupTabButtonAssets();
         UnsubscribeFromPoiManager();
 
         if (driveSync != null)
@@ -354,6 +359,63 @@ public sealed class DwaallichtAppController : MonoBehaviour
             }
         }
 
+        RefreshTabButtonVisuals();
+
+        RefreshDynamicText();
+    }
+
+    private void BuildTabs()
+    {
+        const float tabButtonSize = 76f;
+        const float tabButtonSpacing = 12f;
+        var tabButtonGroupWidth = tabIds.Length * tabButtonSize + (tabIds.Length - 1) * tabButtonSpacing;
+
+        buttons.Clear();
+        ClearChildren(tabRoot);
+
+        AddImage(tabRoot, "TabBarBackground", AppBackground, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+
+        for (var i = 0; i < tabIds.Length; i++)
+        {
+            var index = i;
+            var x = -tabButtonGroupWidth * 0.5f + tabButtonSize * 0.5f + i * (tabButtonSize + tabButtonSpacing);
+            var holder = AddRect(tabRoot, "Tab_" + tabIds[i], new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(x, 14f), new Vector2(tabButtonSize, tabButtonSize));
+            Graphic targetGraphic;
+
+            if (tabButtonSprites[i] != null)
+            {
+                var image = holder.gameObject.AddComponent<Image>();
+                image.sprite = tabButtonSprites[i];
+                image.preserveAspect = true;
+                image.raycastTarget = true;
+                targetGraphic = image;
+            }
+            else
+            {
+                var circle = holder.gameObject.AddComponent<AppCircleGraphic>();
+                circle.color = Paper;
+                circle.fillCenter = true;
+                circle.strokeColor = Ink;
+                circle.strokeWidth = 2f;
+                targetGraphic = circle;
+
+                AddText(holder, tabIds[i], 32, FontStyle.Normal, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            }
+
+            var button = holder.gameObject.AddComponent<Button>();
+            button.targetGraphic = targetGraphic;
+            button.transition = Selectable.Transition.None;
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => ShowTab(index));
+
+            buttons.Add(tabIds[i], button);
+        }
+
+        RefreshTabButtonVisuals();
+    }
+
+    private void RefreshTabButtonVisuals()
+    {
         foreach (var pair in buttons)
         {
             var active = pair.Key == tabIds[activeTab];
@@ -364,42 +426,22 @@ public sealed class DwaallichtAppController : MonoBehaviour
                 circle.SetVerticesDirty();
             }
 
+            var image = pair.Value.targetGraphic as Image;
+            if (image != null && image.sprite != null)
+            {
+                image.color = active ? Color.white : new Color(1f, 1f, 1f, 0.62f);
+                pair.Value.transform.localScale = active ? Vector3.one : Vector3.one * 0.88f;
+            }
+            else
+            {
+                pair.Value.transform.localScale = Vector3.one;
+            }
+
             var label = pair.Value.GetComponentInChildren<Text>();
             if (label != null)
             {
                 label.color = active ? Paper : Ink;
             }
-        }
-
-        RefreshDynamicText();
-    }
-
-    private void BuildTabs()
-    {
-        buttons.Clear();
-        ClearChildren(tabRoot);
-
-        AddImage(tabRoot, "TabBarBackground", AppBackground, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-
-        for (var i = 0; i < tabIds.Length; i++)
-        {
-            var index = i;
-            var x = Mathf.Lerp(58f, 332f, i / 3f);
-            var holder = AddRect(tabRoot, "Tab_" + tabIds[i], new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(x - 32f, 20f), new Vector2(64f, 64f));
-            var circle = holder.gameObject.AddComponent<AppCircleGraphic>();
-            circle.color = Paper;
-            circle.fillCenter = true;
-            circle.strokeColor = Ink;
-            circle.strokeWidth = 2f;
-
-            var button = holder.gameObject.AddComponent<Button>();
-            button.targetGraphic = circle;
-            button.transition = Selectable.Transition.ColorTint;
-            button.onClick.RemoveAllListeners();
-            button.onClick.AddListener(() => ShowTab(index));
-
-            AddText(holder, tabIds[i], 32, FontStyle.Normal, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            buttons.Add(tabIds[i], button);
         }
     }
 
@@ -1145,6 +1187,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return;
         }
 
+        TryLoadTabButtonSprites();
+        if (tabRoot != null)
+        {
+            BuildTabs();
+        }
+
         if (TryLoadSyncedMapUnderlay())
         {
             ApplyMapUnderlayTexture();
@@ -1872,6 +1920,76 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         return false;
+    }
+
+    private bool TryLoadTabButtonSprites()
+    {
+        CleanupTabButtonAssets();
+        var loadedAny = false;
+
+        for (var i = 0; i < tabButtonSprites.Length; i++)
+        {
+            foreach (var rootPath in GetDriveRootCandidatePaths())
+            {
+                var path = Path.Combine(rootPath, TabButtonFolderPath, $"button{i + 1}.png");
+                if (!TryLoadTabButtonSprite(path, out var sprite))
+                {
+                    continue;
+                }
+
+                tabButtonSprites[i] = sprite;
+                loadedAny = true;
+                break;
+            }
+        }
+
+        return loadedAny;
+    }
+
+    private bool TryLoadTabButtonSprite(string path, out Sprite sprite)
+    {
+        sprite = null;
+        if (string.IsNullOrWhiteSpace(path) || path.Contains("://") || !File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!ImageConversion.LoadImage(texture, File.ReadAllBytes(path), false))
+            {
+                Destroy(texture);
+                Debug.LogWarning($"[DwaallichtAppController] Could not decode tab button image from {path}.");
+                return false;
+            }
+
+            texture.name = Path.GetFileNameWithoutExtension(path);
+            sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+            sprite.name = texture.name;
+            tabButtonAssets.Add(sprite);
+            tabButtonAssets.Add(texture);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[DwaallichtAppController] Could not load tab button image {path}: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void CleanupTabButtonAssets()
+    {
+        for (var i = tabButtonAssets.Count - 1; i >= 0; i--)
+        {
+            if (tabButtonAssets[i] != null)
+            {
+                Destroy(tabButtonAssets[i]);
+            }
+        }
+
+        tabButtonAssets.Clear();
+        Array.Clear(tabButtonSprites, 0, tabButtonSprites.Length);
     }
 
     private IEnumerable<string> GetMapImageCandidatePaths()
