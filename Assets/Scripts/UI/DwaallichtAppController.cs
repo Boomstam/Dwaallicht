@@ -63,7 +63,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         "Rond",
     };
 
-    private readonly string[] tabIds = { "K", "M", "L", "S" };
+    private readonly string[] tabIds = { "K", "M", "S", "L" };
     private readonly Dictionary<string, Button> buttons = new Dictionary<string, Button>();
     private readonly Sprite[] tabButtonSprites = new Sprite[4];
     private readonly List<UnityEngine.Object> tabButtonAssets = new List<UnityEngine.Object>();
@@ -332,11 +332,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
             case "M":
                 BuildMapScreen(contentRoot);
                 break;
-            case "L":
-                BuildLegendScreen(contentRoot);
+            case "S":
+                BuildScopeScreen(contentRoot);
                 break;
             default:
-                BuildScopeScreen(contentRoot);
+                BuildLegendScreen(contentRoot);
                 break;
         }
 

@@ -185,8 +185,15 @@
         {
             "driveId": "1U8hKLsxUSiIF8cWLzVGoykljBmkXDr7u",
             "localPath": "AR/QRCode.jpg",
-            "modifiedTime": "2026-07-08T22:34:48.000Z",
+            "modifiedTime": "2026-07-21T22:35:57.122Z",
             "md5Checksum": "fa808c38d6dd003c435050109f153986",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1rSBkZbzyZwXHiRog5hAefj4PEAHmSdpQ",
+            "localPath": "AR/QRCode2.jpg",
+            "modifiedTime": "2026-07-21T22:35:52.646Z",
+            "md5Checksum": "aec2742f2b3124fbe07403e7ab93efdb",
             "exportMimeType": ""
         }
     ]
