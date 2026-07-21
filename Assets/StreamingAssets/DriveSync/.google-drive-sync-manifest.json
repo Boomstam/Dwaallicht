@@ -142,7 +142,7 @@
         },
         {
             "driveId": "1YawBnL3lWH6OK_hHmtgqrNqyU5NJACij",
-            "localPath": "Graphics Kanter/GFX_v1_png/arrow.png",
+            "localPath": "UI/arrow.png",
             "modifiedTime": "2026-07-21T18:12:55.000Z",
             "md5Checksum": "adb7cca5550b296fe860e6450732def0",
             "exportMimeType": ""
@@ -177,7 +177,7 @@
         },
         {
             "driveId": "1gsvW1sptwHK8GvQo9LYJUtmAUy3VEj6A",
-            "localPath": "Graphics Kanter/GFX_v1_png/windroos.png",
+            "localPath": "UI/windroos.png",
             "modifiedTime": "2026-07-21T18:11:58.000Z",
             "md5Checksum": "8b9f992a5e49a6418e6c7f2732eb7eb3",
             "exportMimeType": ""

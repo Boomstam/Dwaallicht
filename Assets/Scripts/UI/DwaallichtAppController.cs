@@ -43,6 +43,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float PoiDetailArSceneHeight = 560f;
     private const float PoiDetailContentWidth = 318f;
     private const float PoiDetailModuleSpacing = 14f;
+    private const float CompassGraphicScale = 1.21f;
+    private const string CompassDiskFolderPath = "UI";
+    private const string CompassDiskFileName = "windroos.png";
     private const string CompassDiskResourcePath = "UI/Compass/CompassDisk";
     private const string CompassDirectionArrowResourcePath = "UI/Compass/CompassDirectionArrow";
     private const string TabButtonFolderPath = "UI/Buttons";
@@ -131,6 +134,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Font font;
     private Texture2D syncedMapUnderlayTexture;
     private Sprite compassDiskSprite;
+    private Texture2D compassDiskTexture;
     private bool compassDiskSpriteIsRuntime;
     private bool compassDiskMissingLogged;
     private Sprite compassDirectionArrowSprite;
@@ -450,6 +454,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         AddText(parent, "Eigenwijzer", 26, FontStyle.Normal, Ink, TextAnchor.UpperLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(28f, -90f), new Vector2(-28f, -34f));
 
         var compass = AddRect(parent, "CompassGraphic", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(330f, 330f));
+        compass.localScale = Vector3.one * CompassGraphicScale;
         compassDirectionRose = AddRect(compass, "RotatingCompassDirectionRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(330f, 330f));
         AddCompassDirectionArrow(compassDirectionRose, "NorthSouthDirection", Green);
 
@@ -782,6 +787,15 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return compassDiskSprite;
         }
 
+        foreach (var rootPath in GetDriveRootCandidatePaths())
+        {
+            var path = Path.Combine(rootPath, CompassDiskFolderPath, CompassDiskFileName);
+            if (TryLoadCompassDiskSprite(path))
+            {
+                return compassDiskSprite;
+            }
+        }
+
         var importedSprite = Resources.Load<Sprite>(CompassDiskResourcePath);
         if (importedSprite != null)
         {
@@ -806,6 +820,37 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         return null;
+    }
+
+    private bool TryLoadCompassDiskSprite(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Contains("://") || !File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!ImageConversion.LoadImage(texture, File.ReadAllBytes(path), false))
+            {
+                Destroy(texture);
+                Debug.LogWarning($"[DwaallichtAppController] Could not decode compass disk image from {path}.");
+                return false;
+            }
+
+            texture.name = Path.GetFileNameWithoutExtension(path);
+            compassDiskTexture = texture;
+            compassDiskSprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+            compassDiskSprite.name = texture.name;
+            compassDiskSpriteIsRuntime = true;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[DwaallichtAppController] Could not load compass disk image {path}: {ex.Message}");
+            return false;
+        }
     }
 
     private Sprite GetCompassDirectionArrowSprite()
@@ -1191,6 +1236,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (tabRoot != null)
         {
             BuildTabs();
+        }
+
+        if (tabIds[activeTab] == "K")
+        {
+            ShowTab(activeTab);
         }
 
         if (TryLoadSyncedMapUnderlay())
@@ -3136,6 +3186,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         compassDiskSprite = null;
         compassDiskSpriteIsRuntime = false;
+
+        if (compassDiskTexture != null)
+        {
+            Destroy(compassDiskTexture);
+            compassDiskTexture = null;
+        }
 
         if (compassDirectionArrowSprite != null && compassDirectionArrowSpriteIsRuntime)
         {
