@@ -2252,7 +2252,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
             {
                 if (IsSelectedPoi(poi))
                 {
-                    ShowTab(3);
+                    ShowTab(2);
                 }
                 else
                 {
@@ -2287,7 +2287,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         var button = card.gameObject.AddComponent<Button>();
         button.targetGraphic = image;
-        button.onClick.AddListener(() => ShowTab(3));
+        button.onClick.AddListener(() => ShowTab(2));
 
         navigationText = AddText(card, "", 14, FontStyle.Bold, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, new Vector2(10f, 6f), new Vector2(-10f, -6f));
         var ring = AddCircle(map, "SelectedPoiRing", Color.clear, Vector2.one * 56f, pinPosition + new Vector2(0f, 4f), false, Gold, 3f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
