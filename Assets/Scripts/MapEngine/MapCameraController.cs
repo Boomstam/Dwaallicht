@@ -85,9 +85,25 @@ public class MapCameraController : MonoBehaviour
             _dragOrigin = pointerPosition;
 
             float scale = (transform.position.y / mapController.tileWorldSize) * dragSpeed * 0.01f;
-            // Euler(90,0,180): screen-right=world+X, screen-up=world-Z
+
             Vector3 move = new Vector3(delta.x * scale, 0, delta.y * scale);
-            transform.position += move;
+
+            Vector3 newPosition = transform.position + move;
+
+            // Clamp camera to map bounds
+            float halfVisibleWidth = Camera.main.orthographicSize * Camera.main.aspect;
+            float halfVisibleHeight = Camera.main.orthographicSize;
+
+            float minX = mapController.mapCenter.x - mapController.mapWidth * 0.5f + halfVisibleWidth;
+            float maxX = mapController.mapCenter.x + mapController.mapWidth * 0.5f - halfVisibleWidth;
+
+            float minZ = mapController.mapCenter.z - mapController.mapHeight * 0.5f + halfVisibleHeight;
+            float maxZ = mapController.mapCenter.z + mapController.mapHeight * 0.5f - halfVisibleHeight;
+
+            newPosition.x = Mathf.Clamp(newPosition.x, minX, maxX);
+            newPosition.z = Mathf.Clamp(newPosition.z, minZ, maxZ);
+
+            transform.position = newPosition;
         }
     }
 
