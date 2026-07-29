@@ -1702,116 +1702,92 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         Vector2 drag = localPosition - lastMapViewDragLocalPosition;
 
-        Vector2 oldPosition = mapViewOffsetPixels;
+        // Nieuwe gewenste positie
+        Vector2 wantedPosition = mapViewOffsetPixels + drag;
 
-        // Probeer de beweging
-        mapViewOffsetPixels += drag;
+        // Enkel bewegen als dit binnen de grenzen ligt
+        mapViewOffsetPixels = ClampMapOffset(wantedPosition);
+
+        // Nieuwe referentie voor de volgende drag
+        lastMapViewDragLocalPosition = localPosition;
+
         ApplyMapViewTransform();
-
-        // Als de clamp de positie heeft aangepast,
-        // weet je dat we tegen een rand zaten.
-        if (mapViewOffsetPixels != oldPosition + drag)
-        {
-            // Reset de drag origin zodat de gebruiker
-            // niet blijft "duwen" tegen de rand.
-            lastMapViewDragLocalPosition = localPosition;
-        }
-        else
-        {
-            lastMapViewDragLocalPosition = localPosition;
-        }
     }
 
     private void ZoomMapView(float factor, Vector2 screenPivot)
     {
         if (mapViewport == null || factor <= 0f)
-        {
             return;
-        }
 
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, screenPivot, null, out var pivotLocal)
-            || !RectTransformUtility.RectangleContainsScreenPoint(mapViewport, screenPivot))
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                mapViewport, screenPivot, null, out var pivotLocal) ||
+            !RectTransformUtility.RectangleContainsScreenPoint(mapViewport, screenPivot))
         {
             pivotLocal = Vector2.zero;
         }
 
-        var previousZoom = Mathf.Max(0.0001f, mapViewZoomMultiplier);
-        var contentUnderPivot = (pivotLocal - mapViewOffsetPixels) / previousZoom;
+        // Bewaar de huidige zoom
+        float previousZoom = Mathf.Max(0.0001f, mapViewZoomMultiplier);
+
+        // Pas de gewenste zoom toe
         mapViewZoomMultiplier *= factor;
+
+        // Houd de zoom binnen de toegelaten grenzen
         ClampMapViewZoomMultiplier();
+
+        // Als de zoom niet veranderd is, hoeft er niets te gebeuren
+        if (Mathf.Approximately(previousZoom, mapViewZoomMultiplier))
+            return;
+
+        // Bereken welk punt onder de muis moet blijven staan
+        Vector2 contentUnderPivot = (pivotLocal - mapViewOffsetPixels) / previousZoom;
+
+        // Bereken de nieuwe positie van de kaart
         mapViewOffsetPixels = pivotLocal - contentUnderPivot * mapViewZoomMultiplier;
+
         ApplyMapViewTransform();
     }
 
     private void ApplyMapViewTransform()
     {
+        if (mapContentRoot == null)
+            return;
+
+        // Zoom binnen de limieten houden
         ClampMapViewZoomMultiplier();
 
-        if (mapContentRoot != null)
-        {
-            mapContentRoot.localScale = Vector3.one * mapViewZoomMultiplier;
+        mapContentRoot.localScale = Vector3.one * mapViewZoomMultiplier;
 
-            if (mapUnderlayRect != null && mapViewport != null)
-            {
-                float mapWidth = mapUnderlayRect.sizeDelta.x * mapViewZoomMultiplier;
-                float mapHeight = mapUnderlayRect.sizeDelta.y * mapViewZoomMultiplier;
+        // Positie binnen de limieten houden
+        mapViewOffsetPixels = ClampMapOffset(mapViewOffsetPixels);
 
-                float viewWidth = mapViewport.rect.width;
-                float viewHeight = mapViewport.rect.height;
-
-                float limitX = Mathf.Max(0f, (mapWidth - viewWidth) * 0.5f);
-                float limitY = Mathf.Max(0f, (mapHeight - viewHeight) * 0.5f);
-
-                mapViewOffsetPixels.x = Mathf.Clamp(mapViewOffsetPixels.x, -limitX, limitX);
-                mapViewOffsetPixels.y = Mathf.Clamp(mapViewOffsetPixels.y, -limitY, limitY);
-            }
-
-            mapContentRoot.anchoredPosition = mapViewOffsetPixels;
-
-            // Eerst de positie toepassen
-            Canvas.ForceUpdateCanvases();
-
-            // Daarna corrigeren indien nodig
-            ClampMapPosition();
-
-            // En de gecorrigeerde positie opnieuw toepassen
-            mapContentRoot.anchoredPosition = mapViewOffsetPixels;
-        }
+        mapContentRoot.anchoredPosition = mapViewOffsetPixels;
 
         if (mapScaleBarText != null)
             mapScaleBarText.text = $"{GetScaleBarMeters():0} m";
     }
 
-    private void ClampMapPosition()
+    /// <summary>
+    /// Zorgt ervoor dat de kaart nooit buiten de viewport kan komen.
+    /// </summary>
+    private Vector2 ClampMapOffset(Vector2 offset)
     {
-        if (mapContentRoot == null || mapViewport == null || mapUnderlayRect == null)
-            return;
+        if (mapViewport == null || mapUnderlayRect == null)
+            return offset;
 
-        Vector3[] corners = new Vector3[4];
-        mapUnderlayRect.GetWorldCorners(corners);
+        float mapWidth = mapUnderlayRect.sizeDelta.x * mapViewZoomMultiplier;
+        float mapHeight = mapUnderlayRect.sizeDelta.y * mapViewZoomMultiplier;
 
-        Vector3[] viewportCorners = new Vector3[4];
-        mapViewport.GetWorldCorners(viewportCorners);
+        float viewWidth = mapViewport.rect.width;
+        float viewHeight = mapViewport.rect.height;
 
-        Vector2 correction = Vector2.zero;
+        float limitX = Mathf.Max(0f, (mapWidth - viewWidth) * 0.45f);
+        float limitY = Mathf.Max(0f, (mapHeight - viewHeight) * 0.6f);
 
-        // Links
-        if (corners[0].x > viewportCorners[0].x)
-            correction.x = viewportCorners[0].x - corners[0].x;
+        offset.x = Mathf.Clamp(offset.x, -limitX, limitX);
+        offset.y = Mathf.Clamp(offset.y, -limitY, limitY);
 
-        // Rechts
-        if (corners[3].x < viewportCorners[3].x)
-            correction.x = viewportCorners[3].x - corners[3].x;
-
-        // Onder
-        if (corners[0].y > viewportCorners[0].y)
-            correction.y = viewportCorners[0].y - corners[0].y;
-
-        // Boven
-        if (corners[1].y < viewportCorners[1].y)
-            correction.y = viewportCorners[1].y - corners[1].y;
-
-        mapViewOffsetPixels += correction;
+        return offset;
     }
 
     private void ClampMapViewZoomMultiplier()
