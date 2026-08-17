@@ -26,6 +26,7 @@ namespace Dwaallicht.Navigation
             var publishIndex = FindColumn(header, "PUBLISH", "PUBLICEREN", "ACTIVE");
             var arIndex = FindColumn(header, "AR", "HASAR", "HAS_AR", "HAS AR", "AUGMENTEDREALITY", "AUGMENTED REALITY");
             var storylineIndex = FindColumn(header, "STORYLINE", "STORY", "CATEGORY", "CATEGORIE", "TYPE");
+            var hiddenIndex = FindColumn(header, "HIDDEN", "HIDE", "IS_HIDDEN", "IS HIDDEN", "VERBORGEN");
 
             if (nameIndex < 0 || latitudeIndex < 0 || longitudeIndex < 0)
             {
@@ -75,7 +76,8 @@ namespace Dwaallicht.Navigation
                     longitude = longitude,
                     color = GetSheetColor(GetField(record, storylineIndex), pinColor),
                     hasAr = arIndex >= 0 && IsPublished(GetField(record, arIndex)),
-                    active = true
+                    active = true,
+                    hidden = hiddenIndex >= 0 && IsPublished(GetField(record, hiddenIndex))
                 });
             }
 
@@ -89,8 +91,12 @@ namespace Dwaallicht.Navigation
                 || string.Equals(normalized, "EVENT", StringComparison.OrdinalIgnoreCase))
             {
                 return "Event";
-            }
+            } 
 
+            if (string.Equals(normalized, "MONKEY", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Monkey";
+            }
             return "Sheet";
         }
 
@@ -113,6 +119,12 @@ namespace Dwaallicht.Navigation
                 || string.Equals(normalized, "PURPLE", StringComparison.OrdinalIgnoreCase))
             {
                 return new Color(138f / 255f, 61f / 255f, 199f / 255f, 1f);
+            }
+
+            if (string.Equals(normalized, "MONKEY", StringComparison.OrdinalIgnoreCase))
+
+            {
+                return new Color(130f / 255f, 14f / 255f, 26f / 255f, 1f);
             }
 
             return fallbackColor;

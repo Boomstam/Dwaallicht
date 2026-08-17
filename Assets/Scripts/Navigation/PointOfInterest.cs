@@ -15,6 +15,7 @@ namespace Dwaallicht.Navigation
         public float longitude = 4.22974f;
         public Color color = new Color(0.12f, 0.55f, 0.95f, 1f);
         public bool active = true;
+        public bool hidden;
 
         public Vector2 LatLon => new Vector2(latitude, longitude);
 

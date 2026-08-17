@@ -66,6 +66,24 @@ public sealed class PoiSheetCsvParserTests
         Assert.That(GetField<Color>(pois[2], "color"), Is.EqualTo(new Color(138f / 255f, 61f / 255f, 199f / 255f, 1f)));
     }
 
+    [Test]
+    public void TryParse_UsesHiddenColumnAndDefaultsToVisibleWhenItIsMissing()
+    {
+        var csv = "NAME,LATITUDE,LONGITUDE,PUBLISH,HIDDEN\n"
+            + "Secret,51.09475,4.34779,YES,YES\n"
+            + "Public,51.1076,4.369738,YES,NO\n";
+
+        Assert.That(TryParse(csv, Color.red, out var pois, out var error), Is.True, error);
+        Assert.That(pois, Has.Count.EqualTo(2));
+        Assert.That(GetField<bool>(pois[0], "hidden"), Is.True);
+        Assert.That(GetField<bool>(pois[1], "hidden"), Is.False);
+
+        var legacyCsv = "NAME,LATITUDE,LONGITUDE,PUBLISH\n"
+            + "Existing location,51.09475,4.34779,YES\n";
+        Assert.That(TryParse(legacyCsv, Color.red, out pois, out error), Is.True, error);
+        Assert.That(GetField<bool>(pois[0], "hidden"), Is.False);
+    }
+
     private static bool TryParse(string csv, Color color, out IList pois, out string error)
     {
         var method = ParserType.GetMethod("TryParse", BindingFlags.Public | BindingFlags.Static);

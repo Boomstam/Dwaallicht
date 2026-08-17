@@ -397,6 +397,9 @@ MonoBehaviour:
   - {x: 488.48773, y: 346.36298}
   - {x: 319.27145, y: -301.0084}
   showMapPoiPins: 1
+  hiddenPoiRevealDistanceMeters: 100
+  showHiddenPoiPreviewsOnDesktop: 1
+  hiddenPoiPreviewAlphaOnDesktop: 0.4
   mapCalibrationMode: 0
 --- !u!4 &1677605752
 Transform:

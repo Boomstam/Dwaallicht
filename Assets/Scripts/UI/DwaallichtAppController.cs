@@ -42,6 +42,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float PoiDetailContentWidth = 318f;
     private const float PoiDetailModuleSpacing = 14f;
     private const float CompassGraphicScale = 1.21f;
+    private const float DefaultHiddenPoiRevealDistanceMeters = 100f;
     private const string CompassDiskFolderPath = "UI";
     private const string CompassDiskFileName = "windroos.png";
     private const string CompassTargetArrowFolderPath = "UI";
@@ -103,6 +104,13 @@ public sealed class DwaallichtAppController : MonoBehaviour
     };
     [SerializeField]
     private bool showMapPoiPins = true;
+    [Header("Hidden POIs")]
+    [SerializeField, Min(1f)]
+    private float hiddenPoiRevealDistanceMeters = DefaultHiddenPoiRevealDistanceMeters;
+    [SerializeField]
+    private bool showHiddenPoiPreviewsOnDesktop = true;
+    [SerializeField, Range(0.05f, 1f)]
+    private float hiddenPoiPreviewAlphaOnDesktop = 0.4f;
     [SerializeField, FormerlySerializedAs("showMapCalibrationControls")]
     private bool mapCalibrationMode;
 
@@ -157,6 +165,13 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private int activeMapCalibrationHandle = -1;
     private int renderedMapPoiFingerprint;
     private RectTransform[] mapCalibrationHandleRects;
+
+    private enum MapPoiVisibility
+    {
+        Hidden,
+        Visible,
+        DesktopPreview
+    }
 
     private void OnEnable()
     {
@@ -495,6 +510,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
         AddMapUnderlay(mapContentRoot);
 
         var selectedPoi = poiManager != null ? poiManager.SelectedPoi : null;
+        if (!IsPoiVisibleOnMap(selectedPoi))
+        {
+            selectedPoi = null;
+        }
         if (selectedPoi != null)
         {
             var selectedPosition = MapLatLonToAnchoredPosition(selectedPoi.LatLon);
@@ -1218,6 +1237,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
             var hash = 17;
             hash = hash * 31 + (showMapPoiPins ? 1 : 0);
             hash = hash * 31 + (IsDriveSyncing() ? 1 : 0);
+            hash = hash * 31 + Mathf.RoundToInt(hiddenPoiRevealDistanceMeters * 100f);
+            hash = hash * 31 + (showHiddenPoiPreviewsOnDesktop ? 1 : 0);
+            hash = hash * 31 + Mathf.RoundToInt(hiddenPoiPreviewAlphaOnDesktop * 1000f);
             if (poiManager == null)
             {
                 return hash;
@@ -1245,6 +1267,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
                 hash = hash * 31 + StableStringHash(poi.id);
                 hash = hash * 31 + StableStringHash(poi.title);
                 hash = hash * 31 + (poi.active ? 1 : 0);
+                hash = hash * 31 + (poi.hidden ? 1 : 0);
+                hash = hash * 31 + (int)GetMapPoiVisibility(poi);
                 hash = hash * 31 + Mathf.RoundToInt(poi.latitude * 100000f);
                 hash = hash * 31 + Mathf.RoundToInt(poi.longitude * 100000f);
             }
@@ -2287,7 +2311,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         foreach (var poi in poiManager.Pois)
         {
-            if (!poi.active)
+            var visibility = GetMapPoiVisibility(poi);
+            if (visibility == MapPoiVisibility.Hidden)
             {
                 continue;
             }
@@ -2295,6 +2320,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
             var isSelected = IsSelectedPoi(poi);
             var position = MapLatLonToAnchoredPosition(poi.LatLon);
             var pin = AddPin(map, poi.color, position, isSelected ? 38f : 30f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            if (visibility == MapPoiVisibility.DesktopPreview)
+            {
+                pin.gameObject.AddComponent<CanvasGroup>().alpha = hiddenPoiPreviewAlphaOnDesktop;
+            }
+
             var button = pin.gameObject.AddComponent<Button>();
             button.targetGraphic = pin.GetComponent<Graphic>();
             button.onClick.AddListener(() =>
@@ -2310,6 +2340,49 @@ public sealed class DwaallichtAppController : MonoBehaviour
                 }
             });
         }
+    }
+
+    private bool IsPoiVisibleOnMap(PointOfInterest poi)
+    {
+        return GetMapPoiVisibility(poi) != MapPoiVisibility.Hidden;
+    }
+
+    private MapPoiVisibility GetMapPoiVisibility(PointOfInterest poi)
+    {
+        if (poi == null || !poi.active)
+        {
+            return MapPoiVisibility.Hidden;
+        }
+
+        if (!poi.hidden || IsHiddenPoiRevealed(poi))
+        {
+            return MapPoiVisibility.Visible;
+        }
+
+        return ShouldShowHiddenPoiPreviewsOnDesktop()
+            ? MapPoiVisibility.DesktopPreview
+            : MapPoiVisibility.Hidden;
+    }
+
+    private bool IsHiddenPoiRevealed(PointOfInterest poi)
+    {
+        return headingProvider != null
+            && headingProvider.HasLocation
+            && GeoMath.DistanceMeters(headingProvider.CurrentLatLon, poi.LatLon) <= hiddenPoiRevealDistanceMeters;
+    }
+
+    private bool ShouldShowHiddenPoiPreviewsOnDesktop()
+    {
+        if (!showHiddenPoiPreviewsOnDesktop)
+        {
+            return false;
+        }
+
+#if UNITY_EDITOR
+        return true;
+#else
+        return SystemInfo.deviceType == DeviceType.Desktop;
+#endif
     }
 
     private static void LockMobilePortraitOrientation()
