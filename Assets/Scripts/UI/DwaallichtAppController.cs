@@ -36,9 +36,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float MapMinScaleBarMeters = 10f;
     private const float MapMaxScaleBarMeters = 500f;
     private const float MapCalibrationHandleRadius = 34f;
-    // The visible ring is deliberately smaller than the grab area so the handles
-    // remain easy to pick up with a mouse as well as with a touch input.
-    private const float MapCalibrationHandleHitRadius = 42f;
     private const float MapClickMoveThresholdPixels = 12f;
     private const float MapTouchTapMoveThresholdDips = 24f;
     private const float PoiDetailArSceneHeight = 560f;
@@ -56,15 +53,15 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const string TabButtonFolderPath = "UI/Buttons";
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
     {
-        new Vector2(51.08273f, 4.35939f),
-        new Vector2(51.10762f, 4.36976f), 
-        new Vector2(51.10375f, 4.33292f),
+        new Vector2(51.094750f, 4.347785f),
+        new Vector2(51.107604f, 4.369738f),
+        new Vector2(51.086803f, 4.360948f),
     };
     private static readonly string[] DefaultMapCalibrationLabels =
     {
-        "Point 1",
-        "Point 2", 
-        "Point 3",
+        "Museum",
+        "Banaan",
+        "Rond",
     };
 
     private readonly string[] tabIds = { "K", "M", "S", "L" };
@@ -102,7 +99,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Vector2[] mapCalibrationTargetPixels =
     {
         new Vector2(40.7300949f, -56.62777f),
-        new Vector2(488.487732f, 346.362976f), 
+        new Vector2(488.487732f, 346.362976f),
         new Vector2(319.271454f, -301.0084f),
     };
     [SerializeField]
@@ -155,34 +152,25 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Sprite compassDirectionArrowSprite;
     private bool compassDirectionArrowSpriteIsRuntime;
     private bool compassDirectionArrowMissingLogged;
+    private Vector2 lastMapDragLocalPosition;
     private Vector2 lastMapViewDragLocalPosition;
     private Vector2 mapEmptyClickStartScreenPosition;
     private Vector2 mapViewOffsetPixels;
     private float mapViewZoomMultiplier = 1f;
     private float lastMapPinchDistance;
+    private bool isDraggingMapUnderlay;
     private bool isDraggingMapView;
     private bool isPinchingMapView;
     private bool isMapEmptyClickCandidate;
     private int activeMapCalibrationHandle = -1;
     private int renderedMapPoiFingerprint;
     private RectTransform[] mapCalibrationHandleRects;
-    private MapCalibrationState? mapCalibrationStateBeforeEditing;
 
     private enum MapPoiVisibility
     {
         Hidden,
         Visible,
         DesktopPreview
-    }
-
-    private struct MapCalibrationState
-    {
-        public Vector2 offsetPixels;
-        public float metersPerPixel;
-        public float zoomMultiplier;
-        public float rotationDegrees;
-        public bool useThreePointFit;
-        public Vector2[] targetPixels;
     }
 
     private void OnEnable()
@@ -241,6 +229,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         RefreshDynamicText();
         UpdateArCameraViewport();
         HandleMapCalibrationHandleDrag();
+        HandleMapUnderlayDrag();
         HandleMapScrollCalibration();
         HandleMapUseGestures();
         RefreshMapNavigationOverlay();
@@ -344,6 +333,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         mapScaleBarText = null;
         mapCalibrationHandleRects = null;
         renderedMapPoiFingerprint = 0;
+        isDraggingMapUnderlay = false;
         isDraggingMapView = false;
         isPinchingMapView = false;
         isMapEmptyClickCandidate = false;
@@ -497,7 +487,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         compassTargetNeedle = AddCompassTargetArrow(compassDirectionRose);
         compassTargetNeedle.gameObject.SetActive(false);
 
-        compassLiveEventNeedle = AddCompassDirectionArrow(compassDirectionRose, "LiveEventDirection", Gold);
+        compassLiveEventNeedle = AddCompassDirectionArrow(compassDirectionRose, "LiveEventDirection", Red);
         compassLiveEventNeedle.gameObject.SetActive(false);
 
         compassTargetDistanceText = AddText(compass, "0 m", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(84f, 44f));
@@ -548,21 +538,18 @@ public sealed class DwaallichtAppController : MonoBehaviour
             AddSelectedPoiCard(mapContentRoot, selectedPoi, MapLatLonToAnchoredPosition(selectedPoi.LatLon));
         }
 
-        var phonePosition = MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon);
-        // Both use the same centre anchor. Make the arrow first so the circle
-        // covers its tail, while the point remains visible in front.
-        mapFacingArrow = AddArrow(mapContentRoot, "PhoneFacingDirection", Ink, phonePosition, new Vector2(14f, 26f), 0f);
-        mapFacingArrow.pivot = new Vector2(0.5f, 0.3f);
-        mapFacingArrow.anchoredPosition = phonePosition;
-        mapPhonePosition = AddCircle(mapContentRoot, "PhonePosition", Paper, Vector2.one * 20f, phonePosition, true, Ink, 2f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
-
-        // Add these last so the calibration anchors stay visible and can be
-        // grabbed even when a POI or the live-position marker overlaps them.
         if (IsMapCalibrationActive())
         {
             AddMapCalibrationHandles(mapContentRoot);
         }
 
+        var phonePosition = MapLatLonToAnchoredPosition(headingProvider.CurrentLatLon);
+        mapFacingArrow = AddArrow(mapContentRoot, "PhoneFacingDirection", Ink, phonePosition, new Vector2(14f, 26f), 0f);
+        mapFacingArrow.anchorMin = new Vector2(0.5f, 0.5f);
+        mapFacingArrow.anchorMax = new Vector2(0.5f, 0.5f);
+        mapFacingArrow.pivot = new Vector2(0.5f, 0.3f);
+        mapFacingArrow.anchoredPosition = phonePosition;
+        mapPhonePosition = AddCircle(mapContentRoot, "PhonePosition", Paper, Vector2.one * 20f, phonePosition, true, Ink, 2f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
         AddScaleBar(map);
         AddMapModeControls(map);
 
@@ -734,18 +721,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return AddPin(parent, color, anchoredPosition, size, new Vector2(0f, 1f), new Vector2(0f, 1f));
     }
 
-    private RectTransform AddPin(RectTransform parent, Color color, Vector2 anchoredPosition, float size, Vector2 anchorMin, Vector2 anchorMax, bool anchorAtTip = false)
+    private RectTransform AddPin(RectTransform parent, Color color, Vector2 anchoredPosition, float size, Vector2 anchorMin, Vector2 anchorMax)
     {
         var pin = AddRect(parent, "Pin", anchorMin, anchorMax, anchoredPosition, new Vector2(size, size * 1.35f));
-        if (anchorAtTip)
-        {
-            // AppPinGraphic draws its geographic tip at two percent from the
-            // bottom of the rect. Making that point the pivot aligns the pin's
-            // visible tip with anchoredPosition (and therefore the POI GPS
-            // coordinate), rather than its bounding-box centre.
-            pin.pivot = new Vector2(0.5f, 0.02f);
-        }
-
         var border = pin.gameObject.AddComponent<AppPinGraphic>();
         border.color = Ink;
 
@@ -757,7 +735,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private RectTransform AddArrow(RectTransform parent, string name, Color color, Vector2 anchoredPosition, Vector2 size, float rotation)
     {
-        var arrow = AddRect(parent, name, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), anchoredPosition, size);
+        var arrow = AddRect(parent, name, Vector2.zero, Vector2.zero, anchoredPosition, size);
         var graphic = arrow.gameObject.AddComponent<AppArrowGraphic>();
         graphic.color = color;
         arrow.localEulerAngles = new Vector3(0f, 0f, rotation);
@@ -1015,6 +993,10 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return null;
     }
 
+    private RectTransform AddCircle(RectTransform parent, string name, Color color, Vector2 size, Vector2 anchoredPosition, bool fillCenter, Color strokeColor, float strokeWidth)
+    {
+        return AddCircle(parent, name, color, size, anchoredPosition, fillCenter, strokeColor, strokeWidth, Vector2.zero, Vector2.zero);
+    }
 
     private RectTransform AddCircle(RectTransform parent, string name, Color color, Vector2 size, Vector2 anchoredPosition, bool fillCenter, Color strokeColor, float strokeWidth, Vector2 anchorMin, Vector2 anchorMax)
     {
@@ -1600,7 +1582,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     {
         EnsureMapCalibrationTargets();
         var nearest = -1;
-        var nearestDistance = MapCalibrationHandleHitRadius;
+        var nearestDistance = MapCalibrationHandleRadius * 0.65f;
 
         for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
         {
@@ -1613,6 +1595,45 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         return nearest;
+    }
+
+    private void HandleMapUnderlayDrag()
+    {
+        if (tabIds[activeTab] != "M" || mapViewport == null || !IsMapCalibrationActive() || activeMapCalibrationHandle >= 0)
+        {
+            isDraggingMapUnderlay = false;
+            return;
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointerDown(out var pointerPosition)
+            && !IsPointerOverMapControl(pointerPosition)
+            && RectTransformUtility.RectangleContainsScreenPoint(mapViewport, pointerPosition))
+        {
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out var dragStartLocalPosition))
+            {
+                lastMapDragLocalPosition = ViewLocalToMapContentPosition(dragStartLocalPosition);
+                isDraggingMapUnderlay = true;
+            }
+        }
+
+        if (Dwaallicht.Input.DwaallichtInput.PrimaryPointerReleasedThisFrame())
+        {
+            isDraggingMapUnderlay = false;
+        }
+
+        if (!isDraggingMapUnderlay || !Dwaallicht.Input.DwaallichtInput.TryGetPrimaryPointer(out pointerPosition))
+        {
+            return;
+        }
+
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(mapViewport, pointerPosition, null, out var localPosition))
+        {
+            return;
+        }
+
+        var contentPosition = ViewLocalToMapContentPosition(localPosition);
+        NudgeMapUnderlay(contentPosition - lastMapDragLocalPosition);
+        lastMapDragLocalPosition = contentPosition;
     }
 
     private void HandleMapScrollCalibration()
@@ -1639,17 +1660,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void HandleMapUseGestures()
     {
-        if (tabIds[activeTab] != "M" || mapViewport == null)
-        {
-            isDraggingMapView = false;
-            isPinchingMapView = false;
-            isMapEmptyClickCandidate = false;
-            return;
-        }
-
-        // A calibration handle is being actively dragged — don't also pan
-        // the view from the same pointer-down event.
-        if (IsMapCalibrationActive() && activeMapCalibrationHandle >= 0)
+        if (tabIds[activeTab] != "M" || mapViewport == null || IsMapCalibrationActive())
         {
             isDraggingMapView = false;
             isPinchingMapView = false;
@@ -1959,16 +1970,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void SetMapCalibrationMode(bool enabled)
     {
-        if (enabled && !mapCalibrationMode)
-        {
-            mapCalibrationStateBeforeEditing = CaptureMapCalibrationState();
-        }
-        else if (!enabled && mapCalibrationMode && mapCalibrationStateBeforeEditing.HasValue)
-        {
-            RestoreMapCalibrationState(mapCalibrationStateBeforeEditing.Value);
-            mapCalibrationStateBeforeEditing = null;
-        }
-
         mapCalibrationMode = enabled;
         if (enabled)
         {
@@ -1976,35 +1977,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
             mapViewZoomMultiplier = 1f;
         }
 
+        isDraggingMapUnderlay = false;
         isDraggingMapView = false;
         isPinchingMapView = false;
         activeMapCalibrationHandle = -1;
         ShowTab(activeTab);
-    }
-
-    private MapCalibrationState CaptureMapCalibrationState()
-    {
-        EnsureMapCalibrationTargets();
-        return new MapCalibrationState
-        {
-            offsetPixels = mapUnderlayOffsetPixels,
-            metersPerPixel = mapUnderlayMetersPerPixel,
-            zoomMultiplier = mapZoomMultiplier,
-            rotationDegrees = mapUnderlayRotationDegrees,
-            useThreePointFit = useThreePointMapCalibration,
-            targetPixels = (Vector2[])mapCalibrationTargetPixels.Clone(),
-        };
-    }
-
-    private void RestoreMapCalibrationState(MapCalibrationState state)
-    {
-        mapUnderlayOffsetPixels = state.offsetPixels;
-        mapUnderlayMetersPerPixel = state.metersPerPixel;
-        mapZoomMultiplier = state.zoomMultiplier;
-        mapUnderlayRotationDegrees = state.rotationDegrees;
-        useThreePointMapCalibration = state.useThreePointFit;
-        mapCalibrationTargetPixels = (Vector2[])state.targetPixels.Clone();
-        ApplyMapUnderlayCalibration();
     }
 
     private void ResetThreePointMapCalibration()
@@ -2256,13 +2233,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         PlayerPrefs.Save();
-        if (mapCalibrationMode)
-        {
-            // A later exit without another save should revert only the edits
-            // made after this save operation.
-            mapCalibrationStateBeforeEditing = CaptureMapCalibrationState();
-        }
-
         ApplyMapUnderlayCalibration();
     }
 
@@ -2353,7 +2323,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
             var isSelected = IsSelectedPoi(poi);
             var position = MapLatLonToAnchoredPosition(poi.LatLon);
-            var pin = AddPin(map, poi.color, position, isSelected ? 38f : 30f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), anchorAtTip: true);
+            var pin = AddPin(map, poi.color, position, isSelected ? 38f : 30f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             if (visibility == MapPoiVisibility.DesktopPreview)
             {
                 pin.gameObject.AddComponent<CanvasGroup>().alpha = hiddenPoiPreviewAlphaOnDesktop;
