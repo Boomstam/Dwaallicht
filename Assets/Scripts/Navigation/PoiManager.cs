@@ -286,6 +286,11 @@ namespace Dwaallicht.Navigation
                 return new Color(1f, 0.72f, 0.08f, 1f);
             }
 
+            if (string.Equals(category, "Dwaallicht", StringComparison.OrdinalIgnoreCase))
+            {
+                return new Color(130f / 255f, 14f / 255f, 26f / 255f, 1f);
+            }
+
             return new Color(0.12f, 0.55f, 0.95f, 1f);
         }
 

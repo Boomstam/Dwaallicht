@@ -20,6 +20,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private static readonly Color Ink = Rgb(32, 30, 31);
     private static readonly Color Paper = Rgb(248, 248, 246);
     private static readonly Color Red = Rgb(222, 22, 32);
+    private static readonly Color Dark_Red = Rgb(130, 14, 26);
     private static readonly Color Purple = Rgb(138, 61, 199);
     private static readonly Color Gold = Rgb(187, 137, 20);
     private static readonly Color Yellow = Rgb(255, 203, 34);
@@ -56,7 +57,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const string TabButtonFolderPath = "UI/Buttons";
     private static readonly Vector2[] DefaultMapCalibrationLatLons =
     {
-        new Vector2(51.08273f, 4.35939f),
+        new Vector2(51.08680f, 4.36097f),
         new Vector2(51.10762f, 4.36976f), 
         new Vector2(51.10375f, 4.33292f),
     };
@@ -579,12 +580,14 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private void BuildLegendScreen(RectTransform parent)
     {
         AddTrophy(parent, new Vector2(0f, -76f));
-        AddPin(parent, Yellow, new Vector2(78f, -196f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
+        AddPin(parent, Yellow, new Vector2(78f, -186f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
         AddText(parent, "storyline 1\n2/10 completed", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -246f), new Vector2(-42f, -170f));
-        AddPin(parent, Purple, new Vector2(78f, -314f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
+        AddPin(parent, Purple, new Vector2(78f, -304f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
         AddText(parent, "storyline 2\n0/10 completed", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -364f), new Vector2(-42f, -288f));
-        AddPin(parent, Red, new Vector2(78f, -442f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
-        AddText(parent, "live event", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -480f), new Vector2(-42f, -428f));
+        AddPin(parent, Dark_Red, new Vector2(78f, -432f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
+        AddText(parent, "dwaallichtjes\n0/3 completed", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -492f), new Vector2(-42f, -406f));
+        AddPin(parent, Red, new Vector2(78f, -560f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
+        AddText(parent, "live event", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -620f), new Vector2(-42f, -524f));
     }
 
     private void BuildScopeScreen(RectTransform parent)
@@ -1792,19 +1795,86 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (mapViewport == null || mapUnderlayRect == null)
             return offset;
 
-        float mapWidth = mapUnderlayRect.sizeDelta.x * mapViewZoomMultiplier;
-        float mapHeight = mapUnderlayRect.sizeDelta.y * mapViewZoomMultiplier;
+        float zoom = Mathf.Max(0.0001f, mapViewZoomMultiplier);
 
-        float viewWidth = mapViewport.rect.width;
-        float viewHeight = mapViewport.rect.height;
+        // Werkelijke kaartafmetingen na zoom
+        float mapWidth = mapUnderlayRect.rect.width * zoom;
+        float mapHeight = mapUnderlayRect.rect.height * zoom;
 
-        float limitX = Mathf.Max(0f, (mapWidth - viewWidth) * 0.45f);
-        float limitY = Mathf.Max(0f, (mapHeight - viewHeight) * 0.6f);
+        float halfW = mapWidth * 0.5f;
+        float halfH = mapHeight * 0.5f;
 
-        offset.x = Mathf.Clamp(offset.x, -limitX, limitX);
-        offset.y = Mathf.Clamp(offset.y, -limitY, limitY);
+        // Werkelijke offset van de kaart binnen MapContent
+        Vector2 mapCenter = mapUnderlayOffsetPixels * zoom;
+
+        // Rotatie van de kaart
+        float angle = mapUnderlayRotationDegrees * Mathf.Deg2Rad;
+        float cos = Mathf.Cos(angle);
+        float sin = Mathf.Sin(angle);
+
+        // Bereken de vier hoeken van de geroteerde kaart.
+        Vector2[] corners =
+        {
+            RotatePoint(new Vector2(-halfW, -halfH), cos, sin) + mapCenter,
+            RotatePoint(new Vector2(-halfW,  halfH), cos, sin) + mapCenter,
+            RotatePoint(new Vector2( halfW, -halfH), cos, sin) + mapCenter,
+            RotatePoint(new Vector2( halfW,  halfH), cos, sin) + mapCenter
+        };
+
+        float minX = corners[0].x;
+        float maxX = corners[0].x;
+        float minY = corners[0].y;
+        float maxY = corners[0].y;
+
+        for (int i = 1; i < corners.Length; i++)
+        {
+            minX = Mathf.Min(minX, corners[i].x);
+            maxX = Mathf.Max(maxX, corners[i].x);
+            minY = Mathf.Min(minY, corners[i].y);
+            maxY = Mathf.Max(maxY, corners[i].y);
+        }
+
+        float halfViewWidth = mapViewport.rect.width * 0.5f;
+        float halfViewHeight = mapViewport.rect.height * 0.5f;
+
+        // Bepaal hoeveel MapContent mag bewegen.
+        float minOffsetX = halfViewWidth - maxX;
+        float maxOffsetX = -halfViewWidth - minX;
+
+        float minOffsetY = halfViewHeight - maxY;
+        float maxOffsetY = -halfViewHeight - minY;
+
+        // Als de kaart groter is dan de viewport:
+        // zorg ervoor dat de volledige viewport bedekt blijft.
+        if (minOffsetX <= maxOffsetX)
+        {
+            offset.x = Mathf.Clamp(offset.x, minOffsetX, maxOffsetX);
+        }
+        else
+        {
+            // Kaart te klein: exact centreren.
+            offset.x = -(minX + maxX) * 0.5f;
+        }
+
+        if (minOffsetY <= maxOffsetY)
+        {
+            offset.y = Mathf.Clamp(offset.y, minOffsetY, maxOffsetY);
+        }
+        else
+        {
+            // Kaart te klein: exact centreren.
+            offset.y = -(minY + maxY) * 0.5f;
+        }
 
         return offset;
+    }
+
+    private Vector2 RotatePoint(Vector2 point, float cos, float sin)
+    {
+        return new Vector2(
+            point.x * cos - point.y * sin,
+            point.x * sin + point.y * cos
+        );
     }
 
     private void ClampMapViewZoomMultiplier()
@@ -2310,25 +2380,16 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private Vector2 GetMapUnderlaySize()
     {
         var texture = GetActiveMapUnderlayTexture();
-        if (texture == null)
-        {
-            return Vector2.zero;
-        }
 
-        var sizeTexture = GetMapUnderlaySizeTexture(texture);
-        return new Vector2(sizeTexture.width, sizeTexture.height) * mapZoomMultiplier;
+        if (texture == null)
+            return Vector2.zero;
+
+        return new Vector2(texture.width, texture.height) * mapZoomMultiplier;
     }
 
     private Texture2D GetActiveMapUnderlayTexture()
     {
         return syncedMapUnderlayTexture != null ? syncedMapUnderlayTexture : mapUnderlayTexture;
-    }
-
-    private Texture2D GetMapUnderlaySizeTexture(Texture2D activeTexture)
-    {
-        return syncedMapUnderlayTexture != null && mapUnderlayTexture != null
-            ? mapUnderlayTexture
-            : activeTexture;
     }
 
     private float GetScaleBarMeters()
