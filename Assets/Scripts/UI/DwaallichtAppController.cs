@@ -735,9 +735,16 @@ public sealed class DwaallichtAppController : MonoBehaviour
         return AddPin(parent, color, anchoredPosition, size, new Vector2(0f, 1f), new Vector2(0f, 1f));
     }
 
-    private RectTransform AddPin(RectTransform parent, Color color, Vector2 anchoredPosition, float size, Vector2 anchorMin, Vector2 anchorMax)
+    private RectTransform AddPin(RectTransform parent, Color color, Vector2 anchoredPosition, float size, Vector2 anchorMin, Vector2 anchorMax, bool anchorAtTip = false)
     {
         var pin = AddRect(parent, "Pin", anchorMin, anchorMax, anchoredPosition, new Vector2(size, size * 1.35f));
+        if (anchorAtTip)
+        {
+            // AppPinGraphic draws its geographic tip at two percent from the
+            // bottom of the rect. Align that point with the POI coordinate.
+            pin.pivot = new Vector2(0.5f, 0.02f);
+        }
+
         var border = pin.gameObject.AddComponent<AppPinGraphic>();
         border.color = Ink;
 
@@ -2409,7 +2416,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
             var isSelected = IsSelectedPoi(poi);
             var position = MapLatLonToAnchoredPosition(poi.LatLon);
-            var pin = AddPin(map, poi.color, position, isSelected ? 38f : 30f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            var pin = AddPin(map, poi.color, position, isSelected ? 38f : 30f, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), anchorAtTip: true);
             if (visibility == MapPoiVisibility.DesktopPreview)
             {
                 pin.gameObject.AddComponent<CanvasGroup>().alpha = hiddenPoiPreviewAlphaOnDesktop;
