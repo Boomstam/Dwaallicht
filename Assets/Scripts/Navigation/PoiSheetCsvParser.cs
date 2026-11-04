@@ -93,9 +93,9 @@ namespace Dwaallicht.Navigation
                 return "Event";
             } 
 
-            if (string.Equals(normalized, "MONKEY", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalized, "DWAALLICHT", StringComparison.OrdinalIgnoreCase))
             {
-                return "Monkey";
+                return "Dwaallicht";
             }
             return "Sheet";
         }
@@ -121,7 +121,7 @@ namespace Dwaallicht.Navigation
                 return new Color(138f / 255f, 61f / 255f, 199f / 255f, 1f);
             }
 
-            if (string.Equals(normalized, "MONKEY", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalized, "DWAALLICHT", StringComparison.OrdinalIgnoreCase))
 
             {
                 return new Color(130f / 255f, 14f / 255f, 26f / 255f, 1f);

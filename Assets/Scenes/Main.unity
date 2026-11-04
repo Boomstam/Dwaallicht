@@ -386,16 +386,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DwaallichtAppController
   activeTab: 0
   mapUnderlayTexture: {fileID: 2800000, guid: 1762ba52a9d0cb547b9fe9e8ed4fd822, type: 3}
+  mapImageFolderName: DriveSync
+  mapImageFileName: Map.png
+  reloadMapAfterDriveSync: 1
   mapCenterLatLon: {x: 51.096466, y: 4.344778}
-  mapUnderlayOffsetPixels: {x: 58.10565, y: 26.537806}
+  mapUnderlayOffsetPixels: {x: 39.63892, y: 18.10374}
   mapUnderlayMetersPerPixel: 3.9213536
-  mapZoomMultiplier: 1.1036563
+  mapZoomMultiplier: 0.7528999
   mapUnderlayRotationDegrees: 1.000061
   useThreePointMapCalibration: 1
   mapCalibrationTargetPixels:
-  - {x: 40.730095, y: -56.62777}
-  - {x: 488.48773, y: 346.36298}
-  - {x: 319.27145, y: -301.0084}
+  - {x: 14.41907, y: -388.7894}
+  - {x: 207.5558, y: 389.3114}
+  - {x: -651.9892, y: 232.7814}
   showMapPoiPins: 1
   hiddenPoiRevealDistanceMeters: 100
   showHiddenPoiPreviewsOnDesktop: 1
@@ -741,8 +744,14 @@ MonoBehaviour:
   arCameraManager: {fileID: 1728181907}
   arCameraBackground: {fileID: 1728181906}
   appCamera: {fileID: 1900410202}
+  cubeVisualPrefab: {fileID: 0}
   simulateInEditor: 1
   rotationDegreesPerSecond: 55
+  useSyncedReferenceImage: 1
+  syncedReferenceImageFolderName: DriveSync
+  syncedReferenceImageSubfolder: AR
+  syncedReferenceImageFileName: QRCode.jpg
+  reloadReferenceImageAfterDriveSync: 1
 --- !u!4 &1739227348
 Transform:
   m_ObjectHideFlags: 0
