@@ -145,6 +145,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private GoogleDriveFolderSync driveSync;
     private Font font;
     private Texture2D syncedMapUnderlayTexture;
+    private Sprite poiMarkerSprite;
     private Sprite compassDiskSprite;
     private Texture2D compassDiskTexture;
     private bool compassDiskSpriteIsRuntime;
@@ -206,6 +207,11 @@ public sealed class DwaallichtAppController : MonoBehaviour
         CleanupPoiImageAssets();
         CleanupCompassAssets();
         CleanupTabButtonAssets();
+        if (poiMarkerSprite != null)
+        {
+            Destroy(poiMarkerSprite);
+            poiMarkerSprite = null;
+        }
         UnsubscribeFromPoiManager();
 
         if (driveSync != null)
@@ -816,6 +822,30 @@ public sealed class DwaallichtAppController : MonoBehaviour
             // AppPinGraphic draws its geographic tip at two percent from the
             // bottom of the rect. Align that point with the POI coordinate.
             pin.pivot = new Vector2(0.5f, 0.02f);
+        }
+
+        if (poiMarkerSprite == null)
+        {
+            var texture = Resources.Load<Texture2D>("UI/Map/PoiMarker");
+            if (texture != null)
+                poiMarkerSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height),
+                    new Vector2(17f / 34f, 13f / 45f), 100f);
+        }
+        if (poiMarkerSprite != null)
+        {
+            // Keep the old root and its geographic tip (0.5, 0.02) unchanged.
+            // The artwork's colored tip is (17,32) in the 34x45 top-down export;
+            // its drop shadow is deliberately below that geographic point.
+            var hitArea = pin.gameObject.AddComponent<Image>();
+            hitArea.color = Color.clear;
+            var artwork = AddRect(pin, "MarkerArtwork", new Vector2(0.5f, 0.02f),
+                new Vector2(0.5f, 0.02f), Vector2.zero, pin.sizeDelta);
+            artwork.pivot = new Vector2(17f / 34f, 13f / 45f);
+            var image = artwork.gameObject.AddComponent<Image>();
+            image.sprite = poiMarkerSprite;
+            image.color = color;
+            image.raycastTarget = false;
+            return pin;
         }
 
         var border = pin.gameObject.AddComponent<AppPinGraphic>();
