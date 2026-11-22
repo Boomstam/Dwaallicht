@@ -52,6 +52,9 @@ namespace Dwaallicht.Cloud
             OAuthBearerToken
         }
 
+        private bool initialLoadComplete;
+        private bool syncAttempted;
+        public bool IsInitialLoadPending => !initialLoadComplete && (syncOnStart || syncAttempted);
         public bool IsSyncing { get; private set; }
         public string LastSyncStatus { get; private set; } = "Idle";
         public string LocalRootPath => GetLocalRootPath();
@@ -80,6 +83,21 @@ namespace Dwaallicht.Cloud
         }
 
         public IEnumerator SyncRoutine()
+        {
+            syncAttempted = true;
+            try
+            {
+                yield return SyncContentsRoutine();
+            }
+            finally
+            {
+                // Also release startup UI after validation errors or cancellation.
+                IsSyncing = false;
+                initialLoadComplete = true;
+            }
+        }
+
+        private IEnumerator SyncContentsRoutine()
         {
             var resolvedFolderId = ResolveFolderId(folderId);
             if (string.IsNullOrWhiteSpace(resolvedFolderId))

@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+#if UNITY_EDITOR && UNITY_MCP_READY && UNITY_MCP_DEPS_49 && !UNITY_MCP_EXCLUDE_FROM_COMPILATION
 using System;
 using com.IvanMurzak.Unity.MCP;
 using UnityEditor;

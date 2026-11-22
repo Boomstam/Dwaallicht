@@ -116,6 +116,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     [SerializeField, FormerlySerializedAs("showMapCalibrationControls")]
     private bool mapCalibrationMode;
 
+    private GameObject startupLoadingScreen;
     private RectTransform contentRoot;
     private RectTransform tabRoot;
     private RectTransform compassDirectionRose;
@@ -307,6 +308,39 @@ public sealed class DwaallichtAppController : MonoBehaviour
 #endif
         BuildTabs();
         ShowTab(activeTab);
+        BuildStartupLoadingScreen(root);
+    }
+
+    private void BuildStartupLoadingScreen(RectTransform parent)
+    {
+        var panel = AddImage(parent, "StartupLoadingScreen", new Color(0.86f, 0.82f, 0.70f),
+            Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        startupLoadingScreen = panel.gameObject;
+        var texture = Resources.Load<Texture2D>("UI/Loading/StartupLoading");
+        if (texture != null)
+        {
+            var artwork = new GameObject("PhotoshopArtwork", typeof(RectTransform), typeof(RawImage), typeof(AspectRatioFitter));
+            artwork.transform.SetParent(panel, false);
+            var image = artwork.GetComponent<RawImage>();
+            image.texture = texture;
+            image.raycastTarget = false;
+            var fitter = artwork.GetComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+            fitter.aspectRatio = (float)texture.width / texture.height;
+        }
+        UpdateStartupLoadingScreen();
+    }
+
+    private void LateUpdate()
+    {
+        UpdateStartupLoadingScreen();
+    }
+
+    private void UpdateStartupLoadingScreen()
+    {
+        if (startupLoadingScreen == null) return;
+        if (driveSync == null) driveSync = FindFirstObjectByType<GoogleDriveFolderSync>();
+        startupLoadingScreen.SetActive(driveSync != null && driveSync.IsInitialLoadPending);
     }
 
     private void ShowTab(int index)

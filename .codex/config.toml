@@ -1,6 +1,6 @@
 [mcp_servers.ai-game-developer]
-bearer_token_env_var = "GAME_DEV_AUTH_TOKEN"
 enabled = true
+http_headers = { "Authorization" = "Bearer agd_pk_lwIqwnRBpX46s072yWvMyUncY6h0f-YrnoRXuSoiORg" }
 startup_timeout_sec = 30
 tool_timeout_sec = 300
-url = "https://ai-game.dev/mcp"
+url = "https://ai-game.dev/mcp/p/b1942f73"

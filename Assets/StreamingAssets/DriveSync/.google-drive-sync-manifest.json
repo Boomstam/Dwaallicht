@@ -3,7 +3,7 @@
         {
             "driveId": "1iHJgNwz2Z72-ocqmMbC8serXXmRRF4qc4W7WguTUSFA",
             "localPath": "Points of Interest.csv",
-            "modifiedTime": "2026-09-09T13:19:16.241Z",
+            "modifiedTime": "2026-11-04T18:40:09.497Z",
             "md5Checksum": "",
             "exportMimeType": "text/csv"
         },
@@ -195,6 +195,20 @@
             "modifiedTime": "2026-07-21T22:35:52.646Z",
             "md5Checksum": "aec2742f2b3124fbe07403e7ab93efdb",
             "exportMimeType": ""
+        },
+        {
+            "driveId": "1rC13ZQTD0IdskQWvGNByhOd-fcZUYeQu",
+            "localPath": "Graphics Kanter/walkthrough.psd",
+            "modifiedTime": "2026-11-18T17:19:15.000Z",
+            "md5Checksum": "1b98ed9d10db6c093854e974a7b83dbc",
+            "exportMimeType": ""
+        },
+        {
+            "driveId": "1XMIISYr_Xzn8FHcdG0JZ4hj-HlxD-bqgJz_gaeI2_6I",
+            "localPath": "To do's/Takenlijst.csv",
+            "modifiedTime": "2026-11-04T18:43:25.765Z",
+            "md5Checksum": "",
+            "exportMimeType": "text/csv"
         }
     ]
 }
