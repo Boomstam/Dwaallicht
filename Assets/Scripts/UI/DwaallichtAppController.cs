@@ -43,13 +43,13 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private const float PoiDetailArSceneHeight = 560f;
     private const float PoiDetailContentWidth = 318f;
     private const float PoiDetailModuleSpacing = 14f;
-    private const float CompassGraphicScale = 1.21f;
+    private const float CompassArtworkWidth = 720f;
     private const float DefaultHiddenPoiRevealDistanceMeters = 100f;
     private const string CompassDiskFolderPath = "UI";
     private const string CompassDiskFileName = "windroos.png";
     private const string CompassTargetArrowFolderPath = "UI";
     private const string CompassTargetArrowFileName = "arrow.png";
-    private const float CompassTargetArrowHeight = 330f;
+    private const float CompassTargetArrowHeight = 840f;
     private const string CompassDiskResourcePath = "UI/Compass/CompassDisk";
     private const string CompassDirectionArrowResourcePath = "UI/Compass/CompassDirectionArrow";
     private const string TabButtonFolderPath = "UI/Buttons";
@@ -244,6 +244,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         HandleMapScrollCalibration();
         HandleMapUseGestures();
         RefreshMapNavigationOverlay();
+        UpdateCompassArtworkScale();
 
         if (headingProvider == null || !headingProvider.HasHeading)
         {
@@ -334,6 +335,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private void LateUpdate()
     {
         UpdateStartupLoadingScreen();
+        UpdateTabButtonLayout();
     }
 
     private void UpdateStartupLoadingScreen()
@@ -432,20 +434,28 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private void BuildTabs()
     {
-        const float tabButtonSize = 76f;
-        const float tabButtonSpacing = 12f;
-        var tabButtonGroupWidth = tabIds.Length * tabButtonSize + (tabIds.Length - 1) * tabButtonSpacing;
-
         buttons.Clear();
         ClearChildren(tabRoot);
 
         AddImage(tabRoot, "TabBarBackground", AppBackground, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        var menuBackground = Resources.Load<Texture2D>("UI/Buttons/MenuBackground");
+        if (menuBackground != null)
+        {
+            var paper = AddRawImage(tabRoot, "RedPaperMenuBackground", menuBackground,
+                Vector2.zero, new Vector2(1f, 0f), Vector2.zero, Vector2.zero);
+            paper.pivot = new Vector2(0.5f, 0f);
+            var fitter = paper.gameObject.AddComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.WidthControlsHeight;
+            fitter.aspectRatio = (float)menuBackground.width / menuBackground.height;
+        }
 
         for (var i = 0; i < tabIds.Length; i++)
         {
             var index = i;
-            var x = -tabButtonGroupWidth * 0.5f + tabButtonSize * 0.5f + i * (tabButtonSize + tabButtonSpacing);
-            var holder = AddRect(tabRoot, "Tab_" + tabIds[i], new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(x, 14f), new Vector2(tabButtonSize, tabButtonSize));
+            // PSD centers: x=96+176*i, y=1129.5 on the 720x1280 canvas.
+            var xAnchor = (96f + i * 176f) / 720f;
+            var holder = AddRect(tabRoot, "Tab_" + tabIds[i], new Vector2(xAnchor, 0f), new Vector2(xAnchor, 0f), Vector2.zero, Vector2.zero);
+            holder.pivot = new Vector2(0.5f, 0.5f);
             Graphic targetGraphic;
 
             if (tabButtonSprites[i] != null)
@@ -460,7 +470,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
             {
                 var circle = holder.gameObject.AddComponent<AppCircleGraphic>();
                 circle.color = Paper;
-                circle.fillCenter = true;
+                circle.fillCenter = false;
                 circle.strokeColor = Ink;
                 circle.strokeWidth = 2f;
                 targetGraphic = circle;
@@ -477,7 +487,20 @@ public sealed class DwaallichtAppController : MonoBehaviour
             buttons.Add(tabIds[i], button);
         }
 
+        UpdateTabButtonLayout();
         RefreshTabButtonVisuals();
+    }
+
+    private void UpdateTabButtonLayout()
+    {
+        if (tabRoot == null) return;
+        var scale = tabRoot.rect.width / 720f;
+        foreach (var pair in buttons)
+        {
+            var rect = (RectTransform)pair.Value.transform;
+            rect.anchoredPosition = new Vector2(0f, 150.5f * scale);
+            rect.sizeDelta = new Vector2(132f, 131f) * scale;
+        }
     }
 
     private void RefreshTabButtonVisuals()
@@ -488,38 +511,48 @@ public sealed class DwaallichtAppController : MonoBehaviour
             var circle = pair.Value.targetGraphic as AppCircleGraphic;
             if (circle != null)
             {
-                circle.color = active ? Ink : Paper;
+                circle.color = Color.clear;
+                circle.fillCenter = false;
                 circle.SetVerticesDirty();
             }
 
             var image = pair.Value.targetGraphic as Image;
             if (image != null && image.sprite != null)
             {
-                image.color = active ? Color.white : new Color(1f, 1f, 1f, 0.62f);
-                pair.Value.transform.localScale = active ? Vector3.one : Vector3.one * 0.88f;
+                image.color = Color.white;
+                pair.Value.transform.localScale = active ? Vector3.one * 1.14f : Vector3.one;
             }
             else
             {
-                pair.Value.transform.localScale = Vector3.one;
+                pair.Value.transform.localScale = active ? Vector3.one * 1.14f : Vector3.one;
             }
 
             var label = pair.Value.GetComponentInChildren<Text>();
             if (label != null)
             {
-                label.color = active ? Paper : Ink;
+                label.color = Ink;
             }
         }
     }
 
     private void BuildCompassScreen(RectTransform parent)
     {
+        var background = Resources.Load<Texture2D>("UI/Compass/ArtworkBackground");
+        if (background != null)
+        {
+            AddRawImage(parent, "CompassArtworkBackground", background, Vector2.zero, Vector2.one,
+                new Vector2(0f, -104f), Vector2.zero);
+        }
         AddText(parent, "Eigenwijzer", 26, FontStyle.Normal, Ink, TextAnchor.UpperLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(28f, -90f), new Vector2(-28f, -34f));
 
         var compass = AddRect(parent, "CompassGraphic", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(330f, 330f));
-        compass.localScale = Vector3.one * CompassGraphicScale;
+        // The exported disk spans the original 720px Photoshop canvas. Both arrow
+        // canvases use 840px at that same scale, including their transparent padding.
+        Canvas.ForceUpdateCanvases();
+        compass.localScale = Vector3.one * (parent.rect.width / CompassArtworkWidth);
         compassDirectionRose = AddRect(compass, "RotatingCompassDirectionRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(330f, 330f));
 
-        compassRose = AddRect(compass, "RotatingCompassRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.one * 257.4f);
+        compassRose = AddRect(compass, "RotatingCompassRose", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.one * CompassArtworkWidth);
         if (!AddCompassDisk(compassRose))
         {
             AddCompassDiskFallback(compassRose);
@@ -533,9 +566,15 @@ public sealed class DwaallichtAppController : MonoBehaviour
         compassLiveEventNeedle = AddCompassDirectionArrow(compassDirectionRose, "LiveEventDirection", Red);
         compassLiveEventNeedle.gameObject.SetActive(false);
 
-        compassTargetDistanceText = AddText(compass, "0 m", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(84f, 44f));
+        compassTargetDistanceText = AddText(compass, "0 m", 36, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(168f, 88f));
         compassTargetDistanceText.gameObject.SetActive(false);
         UpdateCompassTargetNavigation();
+    }
+
+    private void UpdateCompassArtworkScale()
+    {
+        if (compassRose == null || contentRoot == null) return;
+        compassRose.parent.localScale = Vector3.one * (contentRoot.rect.width / CompassArtworkWidth);
     }
 
     private void BuildMapScreen(RectTransform parent)
@@ -799,7 +838,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
     private RectTransform AddCompassDirectionArrow(RectTransform parent, string name, Color color)
     {
-        var arrow = AddRect(parent, name, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(78f, 440f));
+        var arrow = AddRect(parent, name, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.one * CompassTargetArrowHeight);
         var sprite = GetCompassDirectionArrowSprite();
         if (sprite == null)
         {
@@ -808,6 +847,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         var image = arrow.gameObject.AddComponent<Image>();
         image.sprite = sprite;
+        arrow.pivot = sprite.pivot / sprite.rect.size;
         image.color = color;
         image.preserveAspect = true;
         image.raycastTarget = false;
@@ -823,7 +863,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
             size.x = CompassTargetArrowHeight * sprite.rect.width / sprite.rect.height;
         }
 
-        // The parent is centered on the compass and inherits its 121% scale.
+        // The parent shares the disk's scale from the original Photoshop canvas.
         var arrow = AddRect(parent, "TargetDirection", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, size);
         if (sprite == null)
         {
@@ -832,6 +872,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         var image = arrow.gameObject.AddComponent<Image>();
         image.sprite = sprite;
+        arrow.pivot = sprite.pivot / sprite.rect.size;
         image.color = Color.white;
         image.preserveAspect = true;
         image.raycastTarget = false;
@@ -848,6 +889,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
 
         var image = parent.gameObject.AddComponent<Image>();
         image.sprite = sprite;
+        parent.pivot = sprite.pivot / sprite.rect.size;
         image.color = Color.white;
         image.preserveAspect = true;
         image.raycastTarget = false;
@@ -891,6 +933,15 @@ public sealed class DwaallichtAppController : MonoBehaviour
     {
         if (compassDiskSprite != null)
         {
+            return compassDiskSprite;
+        }
+
+        var artwork = Resources.Load<Texture2D>("UI/Compass/ArtworkDisk");
+        if (artwork != null)
+        {
+            compassDiskSprite = Sprite.Create(artwork, new Rect(0, 0, artwork.width, artwork.height),
+                new Vector2(0.5f, 380f / 720f), 100f);
+            compassDiskSpriteIsRuntime = true;
             return compassDiskSprite;
         }
 
@@ -967,6 +1018,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
             return compassTargetArrowSprite;
         }
 
+        compassTargetArrowSprite = CreateCompassArtworkArrow();
+        if (compassTargetArrowSprite != null) return compassTargetArrowSprite;
+
         foreach (var rootPath in GetDriveRootCandidatePaths())
         {
             var path = Path.Combine(rootPath, CompassTargetArrowFolderPath, CompassTargetArrowFileName);
@@ -1015,10 +1069,26 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
     }
 
+    private static Sprite CreateCompassArtworkArrow()
+    {
+        var texture = Resources.Load<Texture2D>("UI/Compass/ArtworkArrow");
+        if (texture == null) return null;
+        // Register the illustrated central ring on the same pivot as the compass disk.
+        return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height),
+            new Vector2(406f / 840f, 440f / 840f), 100f);
+    }
+
     private Sprite GetCompassDirectionArrowSprite()
     {
         if (compassDirectionArrowSprite != null)
         {
+            return compassDirectionArrowSprite;
+        }
+
+        compassDirectionArrowSprite = CreateCompassArtworkArrow();
+        if (compassDirectionArrowSprite != null)
+        {
+            compassDirectionArrowSpriteIsRuntime = true;
             return compassDirectionArrowSprite;
         }
 
@@ -2266,9 +2336,22 @@ public sealed class DwaallichtAppController : MonoBehaviour
     {
         CleanupTabButtonAssets();
         var loadedAny = false;
+        var menuButtons = Resources.Load<Texture2D>("UI/Buttons/ButtonStrip");
 
         for (var i = 0; i < tabButtonSprites.Length; i++)
         {
+            if (menuButtons != null)
+            {
+                // The PSD stores all four icons in a single layer, spaced 176 pixels apart.
+                var sprite = Sprite.Create(menuButtons, new Rect((30f + i * 176f) / 720f * menuButtons.width, 0f,
+                    132f / 720f * menuButtons.width, menuButtons.height),
+                    new Vector2(0.5f, 0.5f), 100f);
+                tabButtonSprites[i] = sprite;
+                tabButtonAssets.Add(sprite);
+                loadedAny = true;
+                continue;
+            }
+
             foreach (var rootPath in GetDriveRootCandidatePaths())
             {
                 var path = Path.Combine(rootPath, TabButtonFolderPath, $"button{i + 1}.png");
@@ -3640,6 +3723,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (compassTargetNeedle != null)
         {
             compassTargetNeedle.localEulerAngles = new Vector3(0f, 0f, -bearing);
+            var image = compassTargetNeedle.GetComponent<Image>();
+            if (image != null) image.color = selectedPoi.color;
         }
 
         if (compassTargetDistanceText != null)
