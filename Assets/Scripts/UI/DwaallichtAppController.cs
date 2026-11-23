@@ -116,7 +116,22 @@ public sealed class DwaallichtAppController : MonoBehaviour
     [SerializeField, FormerlySerializedAs("showMapCalibrationControls")]
     private bool mapCalibrationMode;
 
+    private int achievementCategory = -1;
+    private float achievementTextScale = -1f;
+    private float nextVisitCheck;
     private GameObject startupLoadingScreen;
+    private RectTransform loadingHourglass;
+    private RawImage loadingHourglassPaper;
+    private float loadingAnimationElapsed;
+#if UNITY_EDITOR
+    private bool loadingScreenPreview;
+    public bool LoadingScreenPreview => loadingScreenPreview;
+    public void SetLoadingScreenPreview(bool enabled)
+    {
+        loadingScreenPreview = enabled;
+        UpdateStartupLoadingScreen();
+    }
+#endif
     private RectTransform contentRoot;
     private RectTransform tabRoot;
     private RectTransform compassDirectionRose;
@@ -144,6 +159,8 @@ public sealed class DwaallichtAppController : MonoBehaviour
     private PoiManager poiManager;
     private GoogleDriveFolderSync driveSync;
     private Font font;
+    private Font achievementHeadingFont;
+    private Font achievementBodyFont;
     private Texture2D syncedMapUnderlayTexture;
     private Sprite poiMarkerSprite;
     private Sprite compassDiskSprite;
@@ -238,6 +255,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         EnsureHeadingProvider();
         EnsurePoiManager();
         SubscribeToDriveSync();
+        CheckVisitedLocations();
 
         if (RefreshMapPoiPinsIfNeeded())
         {
@@ -323,7 +341,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var panel = AddImage(parent, "StartupLoadingScreen", new Color(0.86f, 0.82f, 0.70f),
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
         startupLoadingScreen = panel.gameObject;
-        var texture = Resources.Load<Texture2D>("UI/Loading/StartupLoading");
+        var texture = Resources.Load<Texture2D>("UI/Loading/StartupLoadingBase");
         if (texture != null)
         {
             var artwork = new GameObject("PhotoshopArtwork", typeof(RectTransform), typeof(RawImage), typeof(AspectRatioFitter));
@@ -334,21 +352,63 @@ public sealed class DwaallichtAppController : MonoBehaviour
             var fitter = artwork.GetComponent<AspectRatioFitter>();
             fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
             fitter.aspectRatio = (float)texture.width / texture.height;
+            var paper = Resources.Load<Texture2D>("UI/Loading/HourglassPaper");
+            var hourglass = Resources.Load<Texture2D>("UI/Loading/Hourglass");
+            if (paper != null && hourglass != null)
+            {
+                loadingHourglass = AddRect(artwork.GetComponent<RectTransform>(), "LoadingHourglassGroup",
+                    new Vector2(191f / 720f, 0f), new Vector2(548f / 720f, 1f - 813f / 1280f),
+                    Vector2.zero, Vector2.zero);
+                var paperRect = AddRawImage(loadingHourglass, "HourglassPaper", paper,
+                    Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+                loadingHourglassPaper = paperRect.GetComponent<RawImage>();
+                AddRawImage(loadingHourglass, "HourglassInk", hourglass,
+                    new Vector2(10f / 357f, 93f / 467f),
+                    new Vector2(328f / 357f, 411f / 467f), Vector2.zero, Vector2.zero);
+            }
         }
+        loadingAnimationElapsed = 0f;
         UpdateStartupLoadingScreen();
     }
 
     private void LateUpdate()
     {
         UpdateStartupLoadingScreen();
+        UpdateLoadingAnimation();
         UpdateTabButtonLayout();
+        if (contentRoot != null)
+        {
+            var design = contentRoot.Find("AchievementDesign") as RectTransform;
+            if (design != null)
+            {
+                UpdateAchievementDesignSize(design, contentRoot);
+                UpdateAchievementTextSizes(design);
+            }
+        }
     }
 
     private void UpdateStartupLoadingScreen()
     {
         if (startupLoadingScreen == null) return;
         if (driveSync == null) driveSync = FindFirstObjectByType<GoogleDriveFolderSync>();
-        startupLoadingScreen.SetActive(driveSync != null && driveSync.IsInitialLoadPending);
+        var show = driveSync != null && driveSync.IsInitialLoadPending;
+#if UNITY_EDITOR
+        show |= loadingScreenPreview;
+#endif
+        if (show && !startupLoadingScreen.activeSelf) loadingAnimationElapsed = 0f;
+        startupLoadingScreen.SetActive(show);
+    }
+
+    private void UpdateLoadingAnimation()
+    {
+        if (startupLoadingScreen == null || !startupLoadingScreen.activeSelf || loadingHourglass == null) return;
+        const float cycleDuration = 2.5f;
+        // Avoid jumping ahead after the Editor or disk access stalls a frame.
+        loadingAnimationElapsed += Mathf.Min(Time.unscaledDeltaTime, 0.05f);
+        var phase = loadingAnimationElapsed % cycleDuration;
+        var pulse = (1f - Mathf.Cos(phase / cycleDuration * 2f * Mathf.PI)) * 0.5f;
+        var alpha = Mathf.Lerp(1f, 0.72f, pulse);
+        loadingHourglassPaper.color = new Color(1f, 1f, 1f, alpha);
     }
 
     private void ShowTab(int index)
@@ -549,7 +609,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
             AddRawImage(parent, "CompassArtworkBackground", background, Vector2.zero, Vector2.one,
                 new Vector2(0f, -104f), Vector2.zero);
         }
-        AddText(parent, "Eigenwijzer", 26, FontStyle.Normal, Ink, TextAnchor.UpperLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(28f, -90f), new Vector2(-28f, -34f));
 
         var compass = AddRect(parent, "CompassGraphic", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(330f, 330f));
         // The exported disk spans the original 720px Photoshop canvas. Both arrow
@@ -587,7 +646,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
     {
         EnsurePoiManager();
         EnsureHeadingProvider();
-        var map = AddRect(parent, "MapGraphic", Vector2.zero, Vector2.one, new Vector2(24f, 24f), new Vector2(-24f, -20f));
+        var map = AddRect(parent, "MapGraphic", Vector2.zero, Vector2.one, new Vector2(0f, -104f), Vector2.zero);
         AddImage(map, "MapFill", AppBackground, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
 
         mapViewport = AddRect(map, "MapViewport", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
@@ -616,10 +675,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
             mapRouteLine = null;
         }
 
-        if (showMapPoiPins)
-        {
-            AddMapPois(mapContentRoot);
-        }
+        AddMapPois(mapContentRoot);
 
         if (selectedPoi != null)
         {
@@ -642,7 +698,16 @@ public sealed class DwaallichtAppController : MonoBehaviour
         }
 
         AddScaleBar(map);
-        AddMapModeControls(map);
+        var topBanner = Resources.Load<Texture2D>("UI/Map/TopBanner");
+        if (topBanner != null)
+        {
+            var banner = AddRawImage(map, "MapTopBanner", topBanner,
+                new Vector2(0f, 1f), Vector2.one, Vector2.zero, Vector2.zero);
+            banner.pivot = new Vector2(0.5f, 1f);
+            var fitter = banner.gameObject.AddComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.WidthControlsHeight;
+            fitter.aspectRatio = (float)topBanner.width / topBanner.height;
+        }
 
         if (IsMapCalibrationActive())
         {
@@ -654,17 +719,162 @@ public sealed class DwaallichtAppController : MonoBehaviour
         RefreshMapNavigationOverlay();
     }
 
+    private static readonly string[] AchievementCategories = { "Yellow Brick Road", "Locaties", "Dwaallichten" };
+
+    private static void UpdateAchievementDesignSize(RectTransform design, RectTransform parent)
+    {
+        var availableHeight = parent.rect.height + 104f;
+        var width = Mathf.Min(parent.rect.width, availableHeight * 720f / 1280f);
+        design.sizeDelta = new Vector2(width, width * 1280f / 720f);
+    }
+
     private void BuildLegendScreen(RectTransform parent)
     {
-        AddTrophy(parent, new Vector2(0f, -76f));
-        AddPin(parent, Yellow, new Vector2(78f, -186f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
-        AddText(parent, "storyline 1\n2/10 completed", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -246f), new Vector2(-42f, -170f));
-        AddPin(parent, Purple, new Vector2(78f, -304f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
-        AddText(parent, "storyline 2\n0/10 completed", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -364f), new Vector2(-42f, -288f));
-        AddPin(parent, Dark_Red, new Vector2(78f, -432f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
-        AddText(parent, "dwaallichtjes\n0/3 completed", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -492f), new Vector2(-42f, -406f));
-        AddPin(parent, Red, new Vector2(78f, -560f), 30f, new Vector2(0f, 1f), new Vector2(0f, 1f));
-        AddText(parent, "live event", 24, FontStyle.Normal, Ink, TextAnchor.MiddleLeft, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(118f, -620f), new Vector2(-42f, -524f));
+        EnsurePoiManager();
+        achievementTextScale = -1f;
+        achievementHeadingFont = Resources.Load<Font>("UI/Fonts/HerzogVonGraf");
+        achievementBodyFont = Resources.Load<Font>("UI/Fonts/Rochester-Regular");
+        var canvas = AddRect(parent, "AchievementDesign", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -52f), Vector2.zero);
+        canvas.pivot = new Vector2(0.5f, 0.5f);
+        UpdateAchievementDesignSize(canvas, parent);
+        var backgroundName = achievementCategory < 0 ? "AchievementBackground" : "CategoryBackground";
+        var texture = Resources.Load<Texture2D>("UI/Achievements/" + backgroundName);
+        if (texture != null) AddRawImage(canvas, "Artwork", texture, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        if (achievementCategory < 0)
+        {
+            var banner = Resources.Load<Texture2D>("UI/Achievements/AchievementBanner");
+            if (banner != null) AddRawImage(canvas, "Banner", banner, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            AddAchievementText(canvas, "Prijslijst", 1f - 148f / 1280f, 1f + 27f / 1280f, 54, Rgb(211, 204, 186));
+            for (var i = 0; i < AchievementCategories.Length; i++)
+            {
+                var index = i;
+                float top = 1f - (310f + 116f * i) / 1280f;
+                float bottom = top - 100f / 1280f;
+                var button = AddImage(canvas, "AchievementCategory_" + i, Color.clear, new Vector2(0.08f, bottom), new Vector2(0.92f, top), Vector2.zero, Vector2.zero);
+                var graphic = button.GetComponent<Image>(); graphic.raycastTarget = true;
+                button.gameObject.AddComponent<Button>().onClick.AddListener(() => { achievementCategory = index; ShowTab(3); });
+                var categoryItems = GetAchievementItems(i);
+                var completed = categoryItems.FindAll(IsPoiVisited).Count;
+                var categoryLabel = AddText(button, $"{AchievementCategories[i]}  {completed}/{categoryItems.Count}", 29, FontStyle.Normal, Ink, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+                categoryLabel.font = achievementBodyFont != null ? achievementBodyFont : font;
+                categoryLabel.name = "AchievementCategoryLabel";
+                categoryLabel.resizeTextForBestFit = false;
+                categoryLabel.raycastTarget = false;
+            }
+        }
+        else
+        {
+            AddAchievementText(canvas, AchievementCategories[achievementCategory], 1f - 115f / 1280f, 1f + 25f / 1280f, 54, Rgb(192, 38, 46));
+            var back = AddCommandButton(canvas, "<", new Vector2(0.04f, 0.78f), new Vector2(0.16f, 0.85f), Vector2.zero, Vector2.zero, () => { achievementCategory = -1; ShowTab(3); });
+            var items = GetAchievementItems(achievementCategory);
+            var count = items.Count;
+            if (count == 0) AddAchievementText(canvas, "Geen locaties", 0.67f, 0.75f, 20, Ink);
+            else
+            {
+                var viewport = AddRect(canvas, "AchievementListViewport", new Vector2(0.06f, 0.15f), new Vector2(0.94f, 0.76f), Vector2.zero, Vector2.zero);
+                viewport.gameObject.AddComponent<RectMask2D>();
+                var scroll = viewport.gameObject.AddComponent<ScrollRect>();
+                scroll.horizontal = false;
+                var list = AddRect(viewport, "AchievementList", new Vector2(0f, 1f), Vector2.one, Vector2.zero, Vector2.zero);
+                list.pivot = new Vector2(0.5f, 1f);
+                var layout = list.gameObject.AddComponent<VerticalLayoutGroup>();
+                layout.childControlWidth = true; layout.childControlHeight = false; layout.childForceExpandHeight = false;
+                var fitter = list.gameObject.AddComponent<ContentSizeFitter>();
+                fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+                scroll.content = list; scroll.viewport = viewport;
+                var hit = viewport.gameObject.AddComponent<Image>(); hit.color = Color.clear; hit.raycastTarget = true;
+                foreach (var poi in items)
+                {
+                    var visited = IsPoiVisited(poi);
+                    var label = AddDetailLabel(list, visited ? poi.title : "Locked", 24, FontStyle.Normal, Ink, 48f, TextAnchor.MiddleCenter);
+                    label.font = achievementBodyFont != null ? achievementBodyFont : font;
+                    label.name = "AchievementListLabel";
+                    if (visited)
+                    {
+                        var row = label.transform.parent.gameObject;
+                        var graphic = row.AddComponent<Image>(); graphic.color = Color.clear; graphic.raycastTarget = true;
+                        row.AddComponent<Button>().onClick.AddListener(() => { poiManager.SelectPoi(poi); ShowTab(2); });
+                    }
+                }
+            }
+        }
+    }
+
+    private List<PointOfInterest> GetAchievementItems(int category)
+    {
+        var result = new List<PointOfInterest>();
+        if (poiManager == null || poiManager.Pois == null) return result;
+        foreach (var poi in poiManager.Pois)
+        {
+            var story = (poi.storyline ?? "").Trim();
+            var matches = category == 0 ? story == "1" || string.Equals(story, "YELLOW", StringComparison.OrdinalIgnoreCase) || string.Equals(story, "Yellow Brick Road", StringComparison.OrdinalIgnoreCase) :
+                category == 1 ? story == "2" || string.Equals(story, "PURPLE", StringComparison.OrdinalIgnoreCase) || string.Equals(story, "Locaties", StringComparison.OrdinalIgnoreCase) :
+                string.Equals(poi.category, "Dwaallicht", StringComparison.OrdinalIgnoreCase);
+            if (poi.active && matches) result.Add(poi);
+        }
+        return result;
+    }
+
+    private static string VisitedKey(PointOfInterest poi) => "Dwaallicht.Visited." + poi.id;
+    private static bool IsPoiVisited(PointOfInterest poi) => PlayerPrefs.GetInt(VisitedKey(poi), 0) == 1;
+
+    private void CheckVisitedLocations()
+    {
+        if (Time.unscaledTime < nextVisitCheck) return;
+        nextVisitCheck = Time.unscaledTime + 1f;
+        if (headingProvider == null || !headingProvider.HasLocation || poiManager == null || poiManager.Pois == null) return;
+        var changed = false;
+        foreach (var poi in poiManager.Pois)
+        {
+            if (!poi.active || string.IsNullOrEmpty(poi.id) || IsPoiVisited(poi)) continue;
+            if (GeoMath.DistanceMeters(headingProvider.CurrentLatLon, poi.LatLon) <= 10f)
+            {
+                PlayerPrefs.SetInt(VisitedKey(poi), 1);
+                changed = true;
+            }
+        }
+        if (!changed) return;
+        PlayerPrefs.Save();
+        if (activeTab == 3) ShowTab(activeTab);
+    }
+
+    private void AddAchievementText(RectTransform parent, string value, float bottom, float top, int size, Color color)
+    {
+        var text = AddText(parent, value, size, FontStyle.Bold, color, TextAnchor.MiddleCenter,
+            new Vector2(0.08f, bottom), new Vector2(0.92f, top), Vector2.zero, Vector2.zero);
+        text.font = achievementHeadingFont != null ? achievementHeadingFont : font;
+        text.fontStyle = FontStyle.Normal;
+        text.name = "AchievementHeading";
+        text.resizeTextForBestFit = false;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.raycastTarget = false;
+    }
+
+    private void UpdateAchievementTextSizes(RectTransform design)
+    {
+        var scale = design.rect.width / 720f;
+        if (scale <= 0f || Mathf.Approximately(scale, achievementTextScale)) return;
+        achievementTextScale = scale;
+        foreach (var text in design.GetComponentsInChildren<Text>(true))
+        {
+            if (text.name == "AchievementCategoryLabel") text.fontSize = Mathf.Max(1, Mathf.RoundToInt(54f * scale));
+            else if (text.name == "AchievementListLabel") text.fontSize = Mathf.Max(1, Mathf.RoundToInt(36f * scale));
+            else if (text.name == "AchievementHeading")
+            {
+                // Photoshop applies different text transforms to the headings.
+                // Match their measured widths using the original font metrics.
+                var reference = achievementCategory < 0 ? "Prijslijst" : "YellowBrickRoad";
+                var targetWidth = achievementCategory < 0 ? 464f : 632f;
+                var headingFont = achievementHeadingFont != null ? achievementHeadingFont : font;
+                headingFont.RequestCharactersInTexture(reference, 100, FontStyle.Normal);
+                var settings = text.GetGenerationSettings(new Vector2(10000f, 10000f));
+                settings.font = headingFont; settings.fontSize = 100; settings.scaleFactor = 1f;
+                settings.resizeTextForBestFit = false; settings.horizontalOverflow = HorizontalWrapMode.Overflow;
+                var referenceWidth = text.cachedTextGeneratorForLayout.GetPreferredWidth(reference, settings);
+                text.fontSize = Mathf.Max(1, Mathf.RoundToInt(100f * targetWidth / Mathf.Max(1f, referenceWidth) * scale));
+            }
+        }
     }
 
     private void BuildScopeScreen(RectTransform parent)
@@ -680,6 +890,12 @@ public sealed class DwaallichtAppController : MonoBehaviour
         var hasFolder = TryGetPoiFolder(selectedPoi, out var poiFolder);
         var hasArMap = selectedPoi.hasAr;
         Debug.Log($"[DwaallichtAppController] Detail tab POI '{selectedPoi.title}' hasFolder={hasFolder} hasAr={hasArMap} folder='{poiFolder}'");
+
+        if (!hasArMap)
+        {
+            var aboutFrame = Resources.Load<Texture2D>("UI/Achievements/AboutFrame");
+            if (aboutFrame != null) AddRawImage(parent, "PoiAboutArtwork", aboutFrame, Vector2.zero, Vector2.one, new Vector2(0f, -104f), Vector2.zero);
+        }
 
         var viewport = AddRect(parent, "PoiDetailScrollViewport", Vector2.zero, Vector2.one, new Vector2(24f, 24f), new Vector2(-24f, -20f));
         poiDetailScrollViewport = viewport;
@@ -1616,20 +1832,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         mapScaleBarText = AddText(holder, $"{GetScaleBarMeters():0} m", 11, FontStyle.Bold, Ink, TextAnchor.UpperLeft, Vector2.zero, Vector2.one, new Vector2(14f, 14f), new Vector2(-8f, -2f));
     }
 
-    private void AddMapModeControls(RectTransform parent)
-    {
-#if !UNITY_EDITOR
-        mapCalibrationMode = false;
-        var buildPanel = AddImage(parent, "MapModePanel", TranslucentPaper, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -48f), new Vector2(96f, 36f));
-        AddCommandButton(buildPanel, showMapPoiPins ? "Pins on" : "Pins off", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(8f, 6f), new Vector2(80f, 24f), ToggleMapPoiPins);
-#else
-        var panel = AddImage(parent, "MapModePanel", TranslucentPaper, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -48f), new Vector2(264f, 36f));
-        AddCommandButton(panel, mapCalibrationMode ? "Use" : "Use on", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(8f, 6f), new Vector2(74f, 24f), () => SetMapCalibrationMode(false));
-        AddCommandButton(panel, mapCalibrationMode ? "Cal on" : "Cal", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(88f, 6f), new Vector2(82f, 24f), () => SetMapCalibrationMode(true));
-        AddCommandButton(panel, showMapPoiPins ? "Pins on" : "Pins off", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(176f, 6f), new Vector2(80f, 24f), ToggleMapPoiPins);
-#endif
-    }
-
     private void AddMapLoadingIndicator(RectTransform parent)
     {
         mapLoadingPanel = AddImage(parent, "MapLoadingPanel", TranslucentPaper, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-174f, -50f), new Vector2(164f, 38f));
@@ -1931,78 +2133,41 @@ public sealed class DwaallichtAppController : MonoBehaviour
         if (mapViewport == null || mapUnderlayRect == null)
             return offset;
 
-        float zoom = Mathf.Max(0.0001f, mapViewZoomMultiplier);
+        var zoom = Mathf.Max(0.0001f, mapViewZoomMultiplier);
+        var halfMap = mapUnderlayRect.rect.size * (0.5f * zoom);
+        var center = mapUnderlayOffsetPixels * zoom;
+        var angle = mapUnderlayRotationDegrees * Mathf.Deg2Rad;
+        var cos = Mathf.Cos(angle);
+        var sin = Mathf.Sin(angle);
 
-        // Werkelijke kaartafmetingen na zoom
-        float mapWidth = mapUnderlayRect.rect.width * zoom;
-        float mapHeight = mapUnderlayRect.rect.height * zoom;
+        // Only fully opaque banner regions count as covered: the torn edges and
+        // their shadows can be translucent. Sizes are from the 720px artwork.
+        var width = mapViewport.rect.width;
+        var bottomCover = width * (245f / 720f);
+        var topCover = width * (30f / 720f);
+        var x0 = mapViewport.rect.xMin;
+        var x1 = mapViewport.rect.xMax;
+        var y0 = mapViewport.rect.yMin + bottomCover;
+        var y1 = mapViewport.rect.yMax - topCover;
+        if (y0 > y1) y0 = y1 = (y0 + y1) * 0.5f;
 
-        float halfW = mapWidth * 0.5f;
-        float halfH = mapHeight * 0.5f;
-
-        // Werkelijke offset van de kaart binnen MapContent
-        Vector2 mapCenter = mapUnderlayOffsetPixels * zoom;
-
-        // Rotatie van de kaart
-        float angle = mapUnderlayRotationDegrees * Mathf.Deg2Rad;
-        float cos = Mathf.Cos(angle);
-        float sin = Mathf.Sin(angle);
-
-        // Bereken de vier hoeken van de geroteerde kaart.
-        Vector2[] corners =
+        // Transform the visible viewport corners to the map's unrotated axes.
+        // Their extrema give exact limits for the rotated map, not its bounding box.
+        var corners = new[] { new Vector2(x0,y0), new Vector2(x0,y1), new Vector2(x1,y0), new Vector2(x1,y1) };
+        var first = RotatePoint(corners[0] - center, cos, -sin);
+        float minX = first.x, maxX = first.x, minY = first.y, maxY = first.y;
+        for (var i = 1; i < corners.Length; i++)
         {
-            RotatePoint(new Vector2(-halfW, -halfH), cos, sin) + mapCenter,
-            RotatePoint(new Vector2(-halfW,  halfH), cos, sin) + mapCenter,
-            RotatePoint(new Vector2( halfW, -halfH), cos, sin) + mapCenter,
-            RotatePoint(new Vector2( halfW,  halfH), cos, sin) + mapCenter
-        };
-
-        float minX = corners[0].x;
-        float maxX = corners[0].x;
-        float minY = corners[0].y;
-        float maxY = corners[0].y;
-
-        for (int i = 1; i < corners.Length; i++)
-        {
-            minX = Mathf.Min(minX, corners[i].x);
-            maxX = Mathf.Max(maxX, corners[i].x);
-            minY = Mathf.Min(minY, corners[i].y);
-            maxY = Mathf.Max(maxY, corners[i].y);
+            var p = RotatePoint(corners[i] - center, cos, -sin);
+            minX = Mathf.Min(minX, p.x); maxX = Mathf.Max(maxX, p.x);
+            minY = Mathf.Min(minY, p.y); maxY = Mathf.Max(maxY, p.y);
         }
-
-        float halfViewWidth = mapViewport.rect.width * 0.5f;
-        float halfViewHeight = mapViewport.rect.height * 0.5f;
-
-        // Bepaal hoeveel MapContent mag bewegen.
-        float minOffsetX = halfViewWidth - maxX;
-        float maxOffsetX = -halfViewWidth - minX;
-
-        float minOffsetY = halfViewHeight - maxY;
-        float maxOffsetY = -halfViewHeight - minY;
-
-        // Als de kaart groter is dan de viewport:
-        // zorg ervoor dat de volledige viewport bedekt blijft.
-        if (minOffsetX <= maxOffsetX)
-        {
-            offset.x = Mathf.Clamp(offset.x, minOffsetX, maxOffsetX);
-        }
-        else
-        {
-            // Kaart te klein: exact centreren.
-            offset.x = -(minX + maxX) * 0.5f;
-        }
-
-        if (minOffsetY <= maxOffsetY)
-        {
-            offset.y = Mathf.Clamp(offset.y, minOffsetY, maxOffsetY);
-        }
-        else
-        {
-            // Kaart te klein: exact centreren.
-            offset.y = -(minY + maxY) * 0.5f;
-        }
-
-        return offset;
+        var localOffset = RotatePoint(offset, cos, -sin);
+        var loX = maxX - halfMap.x; var hiX = minX + halfMap.x;
+        var loY = maxY - halfMap.y; var hiY = minY + halfMap.y;
+        localOffset.x = loX <= hiX ? Mathf.Clamp(localOffset.x, loX, hiX) : (loX + hiX) * 0.5f;
+        localOffset.y = loY <= hiY ? Mathf.Clamp(localOffset.y, loY, hiY) : (loY + hiY) * 0.5f;
+        return RotatePoint(localOffset, cos, sin);
     }
 
     private Vector2 RotatePoint(Vector2 point, float cos, float sin)
@@ -2017,7 +2182,19 @@ public sealed class DwaallichtAppController : MonoBehaviour
     {
         var minZoom = GetZoomMultiplierForScaleBarMeters(MapMaxScaleBarMeters) / Mathf.Max(0.0001f, mapZoomMultiplier);
         var maxZoom = GetZoomMultiplierForScaleBarMeters(MapMinScaleBarMeters) / Mathf.Max(0.0001f, mapZoomMultiplier);
-        mapViewZoomMultiplier = Mathf.Clamp(mapViewZoomMultiplier, Mathf.Min(minZoom, maxZoom), Mathf.Max(minZoom, maxZoom));
+        if (mapViewport != null && mapUnderlayRect != null && mapUnderlayRect.rect.width > 0f && mapUnderlayRect.rect.height > 0f)
+        {
+            var width = mapViewport.rect.width;
+            var height = Mathf.Max(0f, mapViewport.rect.height - width * (275f / 720f));
+            var angle = mapUnderlayRotationDegrees * Mathf.Deg2Rad;
+            var cos = Mathf.Abs(Mathf.Cos(angle));
+            var sin = Mathf.Abs(Mathf.Sin(angle));
+            var coverZoom = Mathf.Max((cos * width + sin * height) / mapUnderlayRect.rect.width,
+                (sin * width + cos * height) / mapUnderlayRect.rect.height);
+            minZoom = Mathf.Max(minZoom, coverZoom);
+        }
+        maxZoom = Mathf.Max(minZoom, maxZoom);
+        mapViewZoomMultiplier = Mathf.Clamp(mapViewZoomMultiplier, minZoom, maxZoom);
     }
 
     private Vector2 ViewLocalToMapContentPosition(Vector2 viewLocalPosition)
@@ -2151,19 +2328,9 @@ public sealed class DwaallichtAppController : MonoBehaviour
         ShowTab(activeTab);
     }
 
-    private void ToggleMapPoiPins()
-    {
-        showMapPoiPins = !showMapPoiPins;
-        if (!showMapPoiPins)
-        {
-            EnsurePoiManager();
-            poiManager.SelectPoi((PointOfInterest)null);
-        }
+    public bool MapCalibrationMode => mapCalibrationMode;
 
-        ShowTab(activeTab);
-    }
-
-    private void SetMapCalibrationMode(bool enabled)
+    public void SetMapCalibrationMode(bool enabled)
     {
         if (enabled && !mapCalibrationMode)
         {
@@ -2466,7 +2633,6 @@ public sealed class DwaallichtAppController : MonoBehaviour
         PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "Zoom", mapZoomMultiplier);
         PlayerPrefs.SetFloat(MapCalibrationPrefsPrefix + "Rotation", mapUnderlayRotationDegrees);
         PlayerPrefs.SetInt(MapCalibrationPrefsPrefix + "UseThreePoint", useThreePointMapCalibration ? 1 : 0);
-        PlayerPrefs.SetInt(MapCalibrationPrefsPrefix + "ShowPins", showMapPoiPins ? 1 : 0);
         PlayerPrefs.SetInt(MapCalibrationPrefsPrefix + "Saved", 1);
         for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
         {
@@ -2501,11 +2667,7 @@ public sealed class DwaallichtAppController : MonoBehaviour
         mapZoomMultiplier = PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "Zoom", mapZoomMultiplier);
         mapUnderlayRotationDegrees = PlayerPrefs.GetFloat(MapCalibrationPrefsPrefix + "Rotation", mapUnderlayRotationDegrees);
         useThreePointMapCalibration = PlayerPrefs.GetInt(MapCalibrationPrefsPrefix + "UseThreePoint", useThreePointMapCalibration ? 1 : 0) == 1;
-#if UNITY_EDITOR
-        showMapPoiPins = PlayerPrefs.GetInt(MapCalibrationPrefsPrefix + "ShowPins", showMapPoiPins ? 1 : 0) == 1;
-#else
         showMapPoiPins = true;
-#endif
         EnsureMapCalibrationTargets();
         for (var i = 0; i < mapCalibrationTargetPixels.Length; i++)
         {
@@ -2978,18 +3140,15 @@ public sealed class DwaallichtAppController : MonoBehaviour
         touchBlocker.raycastTarget = true;
         scene.gameObject.AddComponent<ArViewportScrollBlocker>();
 
-        AddCircle(scene, "ScopeOuter", Color.clear, new Vector2(292f, 430f), new Vector2(0f, -58f), false, Ink, 4f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-        AddCircle(scene, "ScopeInner", Color.clear, new Vector2(260f, 386f), new Vector2(0f, -80f), false, Paper, 2f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
-        AddPolyline(scene, "ScanReticleHorizontal", Paper, 3f, new[]
+        var frame = Resources.Load<Texture2D>("UI/Achievements/ArFrame");
+        if (frame != null)
         {
-            new Vector2(0.32f, 0.50f),
-            new Vector2(0.68f, 0.50f),
-        });
-        AddPolyline(scene, "ScanReticleVertical", Paper, 3f, new[]
+            AddRawImage(scene, "ArArtworkFrame", frame, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        }
+        else
         {
-            new Vector2(0.50f, 0.34f),
-            new Vector2(0.50f, 0.66f),
-        });
+            AddCircle(scene, "ScopeOuter", Color.clear, new Vector2(292f, 430f), new Vector2(0f, -58f), false, Ink, 4f, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+        }
 
         return scene;
     }

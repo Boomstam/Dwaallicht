@@ -49,8 +49,10 @@
   <ItemGroup>
     <Compile Include="Assets\Editor\UnityMcpConnectOnLoad.cs" />
     <Compile Include="Assets\TutorialInfo\Scripts\Editor\ReadmeEditor.cs" />
+    <Compile Include="Assets\Editor\DwaallichtLoadingMenu.cs" />
     <Compile Include="Assets\Editor\DwaallichtBuild.cs" />
     <Compile Include="Assets\Editor\DwaallichtiOSPostProcessor.cs" />
+    <Compile Include="Assets\Editor\DwaallichtMapMenu.cs" />
     <Compile Include="Assets\Editor\DwaallichtArProjectSetup.cs" />
     <None Include="Assets\MobileDependencyResolver\Editor\mobile-dependency-resolver_version-1.2.185_manifest.txt" />
     <Reference Include="UnityEngine">

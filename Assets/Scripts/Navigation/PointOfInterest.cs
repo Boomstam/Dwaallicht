@@ -9,6 +9,7 @@ namespace Dwaallicht.Navigation
         public string id = Guid.NewGuid().ToString("N");
         public string title = "Nieuw punt";
         public string category = "Algemeen";
+        public string storyline = "";
         [TextArea] public string description = "";
         public bool hasAr;
         public float latitude = 51.18623f;

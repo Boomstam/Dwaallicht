@@ -71,6 +71,7 @@ namespace Dwaallicht.Navigation
                     id = BuildStableId(title, latitude, longitude),
                     title = title,
                     category = GetSheetCategory(GetField(record, storylineIndex)),
+                    storyline = GetField(record, storylineIndex).Trim(),
                     description = "",
                     latitude = latitude,
                     longitude = longitude,
@@ -110,13 +111,15 @@ namespace Dwaallicht.Navigation
             }
 
             if (normalized == "1"
-                || string.Equals(normalized, "YELLOW", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(normalized, "YELLOW", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "Yellow Brick Road", StringComparison.OrdinalIgnoreCase))
             {
                 return new Color(255f / 255f, 203f / 255f, 34f / 255f, 1f);
             }
 
             if (normalized == "2"
-                || string.Equals(normalized, "PURPLE", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(normalized, "PURPLE", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "Locaties", StringComparison.OrdinalIgnoreCase))
             {
                 return new Color(138f / 255f, 61f / 255f, 199f / 255f, 1f);
             }
